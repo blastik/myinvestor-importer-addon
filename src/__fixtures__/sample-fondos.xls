@@ -1,0 +1,156 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <META http-equiv="Expires" content="Tue, 20 Aug 1996 14:25:27 GMT">
+    <META http-equiv="Cache-Control" content="no-cache">
+    <meta http-equiv=Content-Type content="text/html; charset=iso-8859-1">
+    <meta name=ProgId content=Excel.Sheet>
+</head>
+<body>
+
+
+    <table border="1">
+      <TR>
+        <th colspan="2">Fechas</th>
+        <th rowspan="2">Operación</th>
+	    <th rowspan="2">Mercado</th>
+	    <th rowspan="2">Operación</th>
+	    <th rowspan="2">ISIN</th>
+		<th rowspan="2">Valor</th>
+		<th rowspan="2">Títulos/NOMINAL</th>
+		<th rowspan="2">Divisa</th>
+		<th rowspan="2">Precio Neto</th>
+		<th rowspan="2">Importe neto</th>
+	  </TR>
+	  <tr>
+		<th>Operación</th>
+		<th>Liquidación</th>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-01-06&nbsp;</td>
+		<td align="center">2026-01-09&nbsp;</td>
+		<td> 300000001</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>SUSCRIPCION</td>
+		<td>IE00SAMPLE01</td>
+		<td>SAMPLE WORLD INDEX FUND EUR</td>
+		<td x:num="4.61000000">4.61000000</td>
+		<td>EUR</td>
+		<td x:num="11.6260000">11.6260000</td>
+		<td x:num="53.71">53.71</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-02-10&nbsp;</td>
+		<td align="center">2026-02-12&nbsp;</td>
+		<td> 300000002</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>REEMBOLSO</td>
+		<td>IE00SAMPLE01</td>
+		<td>SAMPLE WORLD INDEX FUND EUR</td>
+		<td x:num="2.00000000">2.00000000</td>
+		<td>EUR</td>
+		<td x:num="12.0000000">12.0000000</td>
+		<td x:num="24.00">24.00</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-03-03&nbsp;</td>
+		<td align="center">2026-03-05&nbsp;</td>
+		<td> 300000003</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>SUSCRIPCION</td>
+		<td>IE00SAMPLE03</td>
+		<td>SAMPLE US EQUITY INDEX USD</td>
+		<td x:num="10.00000000">10.00000000</td>
+		<td>USD</td>
+		<td x:num="25.0000000">25.0000000</td>
+		<td x:num="250.00">250.00</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-04-01&nbsp;</td>
+		<td align="center">2026-04-03&nbsp;</td>
+		<td> 300000004</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>SUSCRIPCION</td>
+		<td>IE00SAMPLE02</td>
+		<td>SAMPLE EMERGING MARKETS EUR</td>
+		<td x:num="1.00000000">1.00000000</td>
+		<td>EUR</td>
+		<td x:num="9.0000000">9.0000000</td>
+		<td x:num="9.00">9.00</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-05-05&nbsp;</td>
+		<td align="center">2026-05-07&nbsp;</td>
+		<td> 300000005</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>SUSCR.POR TRASPASO I</td>
+		<td>IE00SAMPLE01</td>
+		<td>SAMPLE WORLD INDEX FUND EUR</td>
+		<td x:num="5.00000000">5.00000000</td>
+		<td>EUR</td>
+		<td x:num="10.0000000">10.0000000</td>
+		<td x:num="50.00">50.00</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-05-05&nbsp;</td>
+		<td align="center">2026-05-07&nbsp;</td>
+		<td> 300000006</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>SUSCR.POR TRASPASO I</td>
+		<td>IE00SAMPLE01</td>
+		<td>SAMPLE WORLD INDEX FUND EUR</td>
+		<td x:num="5.00000000">5.00000000</td>
+		<td>EUR</td>
+		<td x:num="10.0000000">10.0000000</td>
+		<td x:num="50.00">50.00</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-05-05&nbsp;</td>
+		<td align="center">2026-05-07&nbsp;</td>
+		<td> 300000007</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>REEMB.POR TRASPASO I</td>
+		<td>IE00SAMPLE02</td>
+		<td>SAMPLE EMERGING MARKETS EUR</td>
+		<td x:num="10.00000000">10.00000000</td>
+		<td>EUR</td>
+		<td x:num="10.0000000">10.0000000</td>
+		<td x:num="100.00">100.00</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-06-01&nbsp;</td>
+		<td align="center">2026-06-03&nbsp;</td>
+		<td> 300000008</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>ALTA IIC SWITCH</td>
+		<td>IE00SAMPLE03</td>
+		<td>SAMPLE US EQUITY INDEX USD</td>
+		<td x:num="2.00000000">2.00000000</td>
+		<td>USD</td>
+		<td x:num="20.0000000">20.0000000</td>
+		<td x:num="40.00">40.00</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-06-01&nbsp;</td>
+		<td align="center">2026-06-03&nbsp;</td>
+		<td> 300000009</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>BAJA IIC SWITCH</td>
+		<td>IE00SAMPLE01</td>
+		<td>SAMPLE WORLD INDEX FUND EUR</td>
+		<td x:num="4.00000000">4.00000000</td>
+		<td>EUR</td>
+		<td x:num="10.5000000">10.5000000</td>
+		<td x:num="42.00">42.00</td>
+	  </tr>
+    </table>
+</body>
+</html>
