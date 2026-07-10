@@ -1,0 +1,171 @@
+<html>
+<!-- SAMPLE000000000 -->
+<div class="capaBlock" style="visibility:hidden">
+	<div class="sk-fading-circle">
+	  <div class="sk-circle1 sk-circle"></div>
+	  <div class="sk-circle2 sk-circle"></div>
+	</div>
+</div>
+<head>
+<title>Operaciones de cuentas</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<script>
+var tituloFMT = 'Operaciones de cuentas';
+var subtituloFMT = '';
+var textoinicioFMT = 'A continuación se muestran las operaciones realizadas sobre sus cuentas.';
+var formatoFecha="dd/MM/yyyy";
+var separadorMiles = '.';
+var separadorDecimales = ',';
+var nombreP = 'fo_co_conope';
+</script>
+</head>
+
+<html>
+ <body>
+   <table border="1">
+    <tr>
+	 <th>Fecha operación</th>
+	 <th>Fecha valor</th>
+	 <th>Tipo de operación</th>
+	 <th>Concepto</th>
+	 <th>Divisa</th>
+	 <th>Importe</th>
+	</tr>
+
+    <tr>
+	 <td align="center">01/01/2020&nbsp;</td>
+	 <td align="center">01/01/2020&nbsp;</td>
+	 <td>APERTURA</td>
+	 <td>Apertura de cuenta</td>
+	 <td>EUR</td>
+	 <td>+0,00</td>
+	</tr>
+
+    <tr>
+	 <td align="center">01/01/2026&nbsp;</td>
+	 <td align="center">01/01/2026&nbsp;</td>
+	 <td>LIQUIDAC. INTERESES</td>
+	 <td>Liquidacion intereses cuenta</td>
+	 <td>EUR</td>
+	 <td>+0,84</td>
+	</tr>
+
+    <tr>
+	 <td align="center">01/01/2026&nbsp;</td>
+	 <td align="center">01/01/2026&nbsp;</td>
+	 <td>CARGO RETENCION A CUENTA</td>
+	 <td>Retencion IRPF intereses</td>
+	 <td>EUR</td>
+	 <td>-0,16</td>
+	</tr>
+
+    <tr>
+	 <td align="center">06/01/2026&nbsp;</td>
+	 <td align="center">09/01/2026&nbsp;</td>
+	 <td>SUSCRIPCION IIC</td>
+	 <td>SAMPLE WORLD INDEX FUND EUR @ 4.61</td>
+	 <td>EUR</td>
+	 <td>-53,69</td>
+	</tr>
+
+    <tr>
+	 <td align="center">15/02/2026&nbsp;</td>
+	 <td align="center">15/02/2026&nbsp;</td>
+	 <td>ABONO PROMOCION</td>
+	 <td>Bono bienvenida</td>
+	 <td>EUR</td>
+	 <td>+25,00</td>
+	</tr>
+
+    <tr>
+	 <td align="center">10/02/2026&nbsp;</td>
+	 <td align="center">12/02/2026&nbsp;</td>
+	 <td>REEMBOLSO IIC</td>
+	 <td>SAMPLE WORLD INDEX FUND EUR @ 2</td>
+	 <td>EUR</td>
+	 <td>+23,98</td>
+	</tr>
+
+    <tr>
+	 <td align="center">03/03/2026&nbsp;</td>
+	 <td align="center">05/03/2026&nbsp;</td>
+	 <td>SUSCRIPCION IIC</td>
+	 <td>SAMPLE US EQUITY INDEX USD @ 10</td>
+	 <td>EUR</td>
+	 <td>-230,50</td>
+	</tr>
+
+    <tr>
+	 <td align="center">20/03/2026&nbsp;</td>
+	 <td align="center">20/03/2026&nbsp;</td>
+	 <td>TRANSFERENCIA SEPA</td>
+	 <td>Sample Sender Uno</td>
+	 <td>EUR</td>
+	 <td>+200,00</td>
+	</tr>
+
+    <tr>
+	 <td align="center">22/03/2026&nbsp;</td>
+	 <td align="center">22/03/2026&nbsp;</td>
+	 <td>TRANSFERENCIA INMEDIATA</td>
+	 <td>Retirada a cuenta personal</td>
+	 <td>EUR</td>
+	 <td>-50,00</td>
+	</tr>
+
+    <tr>
+	 <td align="center">15/04/2026&nbsp;</td>
+	 <td align="center">17/04/2026&nbsp;</td>
+	 <td>SUSCRIPCION IIC</td>
+	 <td>SAMPLE BOND FUND EUR @ 1.5</td>
+	 <td>EUR</td>
+	 <td>-15,00</td>
+	</tr>
+
+    <tr>
+	 <td align="center">05/07/2026&nbsp;</td>
+	 <td align="center">05/07/2026&nbsp;</td>
+	 <td>COMISION GESTION CARTERA OF</td>
+	 <td>Cartera Indexada</td>
+	 <td>EUR</td>
+	 <td>-1,20</td>
+	</tr>
+
+    <tr>
+	 <td align="center">05/07/2026&nbsp;</td>
+	 <td align="center">05/07/2026&nbsp;</td>
+	 <td>IVA SOBRE COMISIONES</td>
+	 <td>IVA gestion cartera</td>
+	 <td>EUR</td>
+	 <td>-0,25</td>
+	</tr>
+
+    <tr>
+	 <td align="center">03/07/2026&nbsp;</td>
+	 <td align="center">03/07/2026&nbsp;</td>
+	 <td>COMISION CUSTODIA MYINVESTOR</td>
+	 <td>EFECTIVO-EUR @ 0</td>
+	 <td>EUR</td>
+	 <td>-2,48</td>
+	</tr>
+
+    <tr>
+	 <td align="center">27/06/2026&nbsp;</td>
+	 <td align="center">27/06/2026&nbsp;</td>
+	 <td>ABONO POR TRASPASO</td>
+	 <td>Aportacion a mi cartera</td>
+	 <td>EUR</td>
+	 <td>+2,41</td>
+	</tr>
+
+    <tr>
+	 <td align="center">28/06/2026&nbsp;</td>
+	 <td align="center">28/06/2026&nbsp;</td>
+	 <td>CARGO POR TRASPASO</td>
+	 <td>Reembolso cartera indexada</td>
+	 <td>EUR</td>
+	 <td>-10,00</td>
+	</tr>
+   </table>
+ </body>
+</html>
