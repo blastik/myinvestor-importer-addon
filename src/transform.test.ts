@@ -276,12 +276,12 @@ describe("Wealthfolio idempotency-key collisions", () => {
 describe("cross-addon transfer dedup", () => {
   it("skips a TRANSFERENCIA SEPA DEPOSIT that matches an existing cross-account TRANSFER_IN", () => {
     const row = movRow({ tipo: "TRANSFERENCIA SEPA", concepto: "From Trade Republic", importe: "+300,00" });
-    const { activities, skipped } = transform([], [row], CONFIG, [
+    const { activities, duplicates } = transform([], [row], CONFIG, [
       { date: "2026-01-06", amount: 300 },
     ]);
     expect(activities).toHaveLength(0);
-    expect(skipped).toHaveLength(1);
-    expect(skipped[0].reason).toMatch(/existing TRANSFER_IN/i);
+    expect(duplicates).toHaveLength(1);
+    expect(duplicates[0].reason).toMatch(/existing TRANSFER_IN/i);
   });
 
   it("still imports as DEPOSIT when no matching TRANSFER_IN exists", () => {
@@ -303,5 +303,38 @@ describe("cross-addon transfer dedup", () => {
     const { activities } = transform([], [row], CONFIG, [{ date: "2026-01-06", amount: 2.41 }]);
     expect(activities).toHaveLength(1);
     expect(activities[0].activityType).toBe("DEPOSIT");
+  });
+
+  it("flags an already-imported DEPOSIT as a real duplicate once a matching TRANSFER_IN shows up later", () => {
+    // Reproduces the retroactive case: this DEPOSIT was created by an
+    // earlier import, before the other addon's TRANSFER_IN existed to dedup
+    // against. Re-importing the same movimientos history today should now
+    // catch it, since both sides currently exist.
+    const row = movRow({ tipo: "TRANSFERENCIA SEPA", concepto: "Paula", importe: "+100,00" });
+    const { activities, duplicates } = transform(
+      [],
+      [row],
+      CONFIG,
+      [{ id: "transfer-1", date: "2026-01-06", amount: 100 }],
+      [{ id: "deposit-1", date: "2026-01-06", amount: 100 }],
+    );
+    expect(activities).toHaveLength(0);
+    expect(duplicates).toHaveLength(1);
+    expect(duplicates[0].reason).toMatch(/real duplicate/i);
+    expect(duplicates[0].reason).toContain("transfer-1");
+    expect(duplicates[0].reason).toContain("deposit-1");
+  });
+
+  it("still just skips (no 'real duplicate' warning) when no matching DEPOSIT already exists", () => {
+    const row = movRow({ tipo: "TRANSFERENCIA SEPA", importe: "+100,00" });
+    const { duplicates } = transform(
+      [],
+      [row],
+      CONFIG,
+      [{ id: "transfer-1", date: "2026-01-06", amount: 100 }],
+      [{ id: "deposit-1", date: "2026-01-06", amount: 999 }],
+    );
+    expect(duplicates).toHaveLength(1);
+    expect(duplicates[0].reason).not.toMatch(/real duplicate/i);
   });
 });

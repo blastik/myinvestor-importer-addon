@@ -26,6 +26,7 @@ import { transform } from "./transform";
 import type {
   AddonSettings,
   ExistingCashTransferIn,
+  ExistingDeposit,
   FondosRow,
   MovimientosRow,
   SkippedRow,
@@ -306,18 +307,39 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
       // Patterns) may already have recorded a cross-account TRANSFER_IN for
       // money that also shows up here as a plain bank transfer — fetch what
       // already exists so transform() can avoid double-recording it as a
-      // DEPOSIT. Best-effort: an empty list just means no dedup will happen.
+      // DEPOSIT. Also fetch our own already-imported DEPOSITs: since the two
+      // addons' import order isn't controlled by either one, a DEPOSIT can
+      // get created here before the matching TRANSFER_IN exists yet to dedup
+      // against — passing both lets transform() retroactively detect that
+      // now-confirmed duplicate on this (or any later) import, instead of
+      // only ever preventing new ones going forward. Best-effort: an empty
+      // list just means no dedup will happen.
+      //
+      // A cash movement (as opposed to an in-kind security transfer) is
+      // identified by having NO linked asset — confirmed against a real
+      // account export that Wealthfolio never actually attaches a
+      // "$CASH-EUR"-style assetSymbol to DEPOSIT/TRANSFER_IN rows on
+      // read-back (BUY/SELL rows for real funds do have one, e.g.
+      // "0P0001XF3Z"). Checking for that prefix instead of absence made this
+      // whole dedup mechanism silently match nothing, ever, since it was
+      // first written.
+      const isCashActivity = (a: { assetSymbol?: string }) =>
+        !a.assetSymbol || a.assetSymbol.startsWith("$CASH");
       let existingCashTransfersIn: ExistingCashTransferIn[] = [];
+      let existingDeposits: ExistingDeposit[] = [];
       try {
         const existing = await ctx.api.activities.getAll(settings.accountId);
         existingCashTransfersIn = existing
-          .filter(
-            (a) =>
-              a.activityType === "TRANSFER_IN" &&
-              a.assetSymbol?.startsWith("$CASH") &&
-              a.amount != null,
-          )
+          .filter((a) => a.activityType === "TRANSFER_IN" && isCashActivity(a) && a.amount != null)
           .map((a) => ({
+            id: a.id,
+            date: new Date(a.date).toISOString().slice(0, 10),
+            amount: Math.abs(parseFloat(a.amount as string)),
+          }));
+        existingDeposits = existing
+          .filter((a) => a.activityType === "DEPOSIT" && isCashActivity(a) && a.amount != null)
+          .map((a) => ({
+            id: a.id,
             date: new Date(a.date).toISOString().slice(0, 10),
             amount: Math.abs(parseFloat(a.amount as string)),
           }));
@@ -325,7 +347,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
         // non-critical — proceed without cross-addon dedup
       }
 
-      const result = transform(fondos, movimientos, settings, existingCashTransfersIn);
+      const result = transform(fondos, movimientos, settings, existingCashTransfersIn, existingDeposits);
       setParseResult(result);
       setChecked(null);
       setExcludedLines(new Set());
@@ -639,6 +661,8 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
               <p className="text-muted-foreground text-xs">
                 {parseResult.activities.length} activities parsed
                 {parseResult.skipped.length > 0 && ` · ${parseResult.skipped.length} skipped`}
+                {parseResult.duplicates.length > 0 &&
+                  ` · ${parseResult.duplicates.length} cross-addon duplicates`}
               </p>
             )}
             <div className="flex gap-2">
@@ -708,6 +732,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
     ).length;
     const toImportCount = valid.length + duplicates.length - userExcludedCount;
     const unsupported = parseResult?.skipped ?? [];
+    const crossAddonDuplicates = parseResult?.duplicates ?? [];
 
     const visibleActivities = showDuplicatesOnly
       ? checked.filter((a) => activityStatus(a) === "duplicate")
@@ -721,6 +746,8 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
             <p className="text-muted-foreground mt-0.5 text-sm">
               {valid.length} ready · {duplicates.length} duplicates · {errors.length} errors
               {unsupported.length > 0 && ` · ${unsupported.length} unsupported`}
+              {crossAddonDuplicates.length > 0 &&
+                ` · ${crossAddonDuplicates.length} cross-addon duplicates`}
             </p>
             {checkError && (
               <p className="text-destructive mt-1 text-xs">
@@ -765,6 +792,11 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
               <div className="flex items-center justify-between px-3 pt-3">
                 <TabsList>
                   <TabsTrigger value="activities">Activities ({checked.length})</TabsTrigger>
+                  {crossAddonDuplicates.length > 0 && (
+                    <TabsTrigger value="cross-addon-duplicates">
+                      Duplicates ({crossAddonDuplicates.length})
+                    </TabsTrigger>
+                  )}
                   <TabsTrigger value="unsupported">Unsupported ({unsupported.length})</TabsTrigger>
                 </TabsList>
                 {duplicates.length > 0 && (
@@ -814,6 +846,12 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
                   </table>
                 </div>
               </TabsContent>
+
+              {crossAddonDuplicates.length > 0 && (
+                <TabsContent value="cross-addon-duplicates" className="mt-0">
+                  <SkippedTable rows={crossAddonDuplicates} />
+                </TabsContent>
+              )}
 
               <TabsContent value="unsupported" className="mt-0">
                 <SkippedTable rows={unsupported} />

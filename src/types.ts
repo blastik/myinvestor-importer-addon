@@ -58,6 +58,23 @@ export interface SkippedRow {
 // (which never flags this: DEPOSIT and TRANSFER_IN are different
 // activityTypes, so they hash to different idempotency keys).
 export interface ExistingCashTransferIn {
+  id?: string; // when available, referenced in "already imported" warnings
+  date: string; // YYYY-MM-DD
+  amount: number;
+}
+
+// A plain DEPOSIT already present in the target account (e.g. created by an
+// earlier run of this same addon). Checked alongside ExistingCashTransferIn:
+// the two addons' import order isn't controlled by either one, so a
+// TRANSFERENCIA SEPA/INMEDIATA row can get imported here as a DEPOSIT before
+// the cross-addon TRANSFER_IN it duplicates even exists yet — at that point
+// there was nothing to dedup against. Once the TRANSFER_IN later shows up,
+// this addon has no way to go back and un-create the DEPOSIT it already
+// made, so instead it re-checks on every subsequent import (which re-scans
+// the whole movimientos history, not just new rows) and surfaces the
+// now-detected duplicate for manual deletion.
+export interface ExistingDeposit {
+  id?: string;
   date: string; // YYYY-MM-DD
   amount: number;
 }
@@ -65,4 +82,11 @@ export interface ExistingCashTransferIn {
 export interface TransformResult {
   activities: ActivityImport[];
   skipped: SkippedRow[];
+  // Cross-addon duplicate findings (TRANSFERENCIA SEPA/INMEDIATA rows that
+  // match an existing TRANSFER_IN). Kept separate from `skipped`, which is
+  // for rows this addon genuinely can't process — a duplicate is a different
+  // kind of finding (nothing wrong with the row, it's just already recorded
+  // elsewhere) and reviewing them together buries actionable "delete this"
+  // warnings among "this fund type isn't supported yet" noise.
+  duplicates: SkippedRow[];
 }

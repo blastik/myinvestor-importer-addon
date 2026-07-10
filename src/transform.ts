@@ -2,6 +2,7 @@ import type { ActivityImport } from "@wealthfolio/addon-sdk";
 import type {
   AddonSettings,
   ExistingCashTransferIn,
+  ExistingDeposit,
   FondosRow,
   MovimientosRow,
   SkippedRow,
@@ -9,18 +10,19 @@ import type {
 } from "./types";
 import { fondosNum, movimientosNum } from "./parseFiles";
 
-// A bank transfer recorded in movimientos and a cross-addon TRANSFER_IN are
+// A bank transfer recorded in movimientos and a cross-addon TRANSFER_IN (or
+// an already-imported DEPOSIT from an earlier run of this addon) are
 // considered the same real-world money movement when the amount matches
-// exactly and the dates are within a day (the two systems can record the
-// settlement day slightly differently).
-function matchesExistingTransferIn(
-  existing: ExistingCashTransferIn[],
+// exactly and the dates are within a day (the two systems/imports can record
+// the settlement day slightly differently).
+function findAmountDateMatch<T extends { date: string; amount: number }>(
+  existing: T[],
   date: string,
   amount: number,
-): boolean {
+): T | undefined {
   const dayMs = 24 * 60 * 60 * 1000;
   const target = new Date(date).getTime();
-  return existing.some(
+  return existing.find(
     (e) => Math.abs(e.amount - amount) < 0.005 && Math.abs(new Date(e.date).getTime() - target) <= dayMs,
   );
 }
@@ -104,10 +106,12 @@ export function transform(
   movimientosRows: MovimientosRow[],
   config: AddonSettings,
   existingCashTransfersIn: ExistingCashTransferIn[] = [],
+  existingDeposits: ExistingDeposit[] = [],
 ): TransformResult {
   const { accountId } = config;
   const drafts: Draft[] = [];
   const skipped: SkippedRow[] = [];
+  const duplicates: SkippedRow[] = [];
 
   const cashPool = movimientosRows.map((row, index) => ({ row, index, consumed: false }));
 
@@ -308,17 +312,33 @@ export function transform(
       // trade-republic-importer-addon's Transfer Patterns) — importing it
       // again here as a DEPOSIT would double-count the same money as both
       // spending on that side and external income on this side.
-      if (amt >= 0 && matchesExistingTransferIn(existingCashTransfersIn, r.fechaOperacion, absAmt)) {
-        skipped.push({
-          date: r.fechaOperacion,
-          source: "movimientos",
-          type: r.tipo,
-          description: r.concepto,
-          reason:
-            "Matches an existing TRANSFER_IN of the same amount around this date in this account — " +
-            "likely already recorded by another addon/import; not creating a duplicate DEPOSIT",
-        });
-        continue;
+      if (amt >= 0) {
+        const transferIn = findAmountDateMatch(existingCashTransfersIn, r.fechaOperacion, absAmt);
+        if (transferIn) {
+          // The addons' import order isn't controlled by either one: if this
+          // exact DEPOSIT was already created by an earlier import (before
+          // this TRANSFER_IN existed to dedup against), there was nothing to
+          // catch it at the time. We can't un-create that DEPOSIT, but since
+          // every import re-scans the full movimientos history, we can at
+          // least detect the now-confirmed duplicate and flag it for the
+          // user to remove manually — closing the gap instead of silently
+          // leaving a stale duplicate forever.
+          const dupDeposit = findAmountDateMatch(existingDeposits, r.fechaOperacion, absAmt);
+          duplicates.push({
+            date: r.fechaOperacion,
+            source: "movimientos",
+            type: r.tipo,
+            description: r.concepto,
+            reason: dupDeposit
+              ? `Matches an existing TRANSFER_IN${transferIn.id ? ` (id ${transferIn.id})` : ""} — and a DEPOSIT of the ` +
+                `same amount/date already exists in this account too${dupDeposit.id ? ` (id ${dupDeposit.id})` : ""}, ` +
+                "most likely created by an earlier import before that TRANSFER_IN existed to dedup against. " +
+                "This looks like a real duplicate — delete the DEPOSIT activity manually in Wealthfolio."
+              : "Matches an existing TRANSFER_IN of the same amount around this date in this account — " +
+                "likely already recorded by another addon/import; not creating a duplicate DEPOSIT",
+          });
+          continue;
+        }
       }
       drafts.push(
         cashAct(accountId, amt >= 0 ? "DEPOSIT" : "WITHDRAWAL", r.fechaOperacion, orderHint, absAmt, r.concepto || r.tipo),
@@ -384,5 +404,5 @@ export function transform(
     a.lineNumber = i + 1;
   });
 
-  return { activities, skipped };
+  return { activities, skipped, duplicates };
 }

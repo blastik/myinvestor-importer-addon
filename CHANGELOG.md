@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.1] - 2026-07-10
+
+### Fixed
+
+- Cross-addon transfer dedup never actually matched anything: the filter checked for a `$CASH`-prefixed `assetSymbol` on existing `DEPOSIT`/`TRANSFER_IN` activities, but Wealthfolio never attaches an asset to cash-type activities on read-back (confirmed against a real account export) — so `existingCashTransfersIn` was silently empty from day one, regardless of import order. A real account had ended up with 8 duplicated transfers (€1,000) as a result. Fixed to detect a cash activity by the absence of a linked asset instead.
+- Added retroactive detection: since the addon can't delete activities it already created, every import now re-checks the *entire* movimientos history against current `TRANSFER_IN`/`DEPOSIT` state, so a duplicate created before its counterpart existed still gets flagged (with both activity ids) on a later import instead of staying silently stuck forever.
+
+### Changed
+
+- Cross-addon duplicate findings now show in their own "Duplicates" tab during import review, separate from "Unsupported" — a duplicate means the row is fine and already recorded elsewhere, which needs a different response than "this addon can't process this row type."
+
 ## [1.0.0] - 2026-07-10
 
 ### Added
