@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.2] - 2026-07-23
+
+### Added
+
+- Added support for Inversis.com movimientos operation labels found in brokerage exports, including:
+	- `COMPRA RV CONTADO SF` -> `BUY`
+	- `VENTA DE VALORES` -> `SELL`
+	- `COMPRA RF VCTO` -> `BUY` (`BOND`)
+	- `AMORTIZACION RF` -> `SELL` (`BOND`)
+	- `ABONO DE DIVIDENDO` -> `DIVIDEND` for positive amounts, and `WITHDRAWAL` for negative reversal lines (e.g. `ANUL.`) to keep cash reconciliation exact.
+- Added parsing of instrument name and quantity from movimientos `Concepto` values in the format `<instrument> @ <quantity>` for stock/bond/dividend rows.
+- Added support for the alternate custody-fee label `COMISIONES CUSTODIA` -> `FEE`.
+
+### Changed
+
+- Updated test coverage for the new Inversis labels and added parser coverage for mojibake header variants such as `Tipo de operaci�n`.
+
 ## [1.0.1] - 2026-07-10
 
 ### Fixed

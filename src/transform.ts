@@ -79,6 +79,25 @@ function conceptShares(concepto: string): number | undefined {
   return Number.isNaN(n) ? undefined : n;
 }
 
+function conceptInstrument(concepto: string): { symbol: string; quantity?: number } {
+  const at = concepto.lastIndexOf("@");
+  if (at === -1) return { symbol: concepto.trim().replace(/\s+/g, " ") || "UNKNOWN" };
+  const symbol = concepto
+    .slice(0, at)
+    .trim()
+    .replace(/\s+/g, " ");
+  const quantityRaw = concepto
+    .slice(at + 1)
+    .trim()
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const quantity = parseFloat(quantityRaw);
+  return {
+    symbol: symbol || "UNKNOWN",
+    quantity: Number.isNaN(quantity) ? undefined : quantity,
+  };
+}
+
 function findCashMatch(
   pool: { row: MovimientosRow; index: number; consumed: boolean }[],
   expectedTipo: string,
@@ -286,8 +305,79 @@ export function transform(
       continue;
     }
 
-    if (r.tipo === "COMISION CUSTODIA MYINVESTOR" || r.tipo === "COMISION GESTION CARTERA OF" || r.tipo === "IVA SOBRE COMISIONES") {
+    if (r.tipo === "COMISION CUSTODIA MYINVESTOR" || r.tipo === "COMISIONES CUSTODIA" || r.tipo === "COMISION GESTION CARTERA OF" || r.tipo === "IVA SOBRE COMISIONES") {
       drafts.push(cashAct(accountId, "FEE", r.fechaOperacion, orderHint, absAmt, r.tipo + (r.concepto ? ` - ${r.concepto}` : "")));
+      continue;
+    }
+
+    if (r.tipo === "ABONO DE DIVIDENDO") {
+      const { symbol, quantity } = conceptInstrument(r.concepto);
+      if (amt >= 0) {
+        drafts.push({
+          day: r.fechaOperacion,
+          orderHint,
+          activity: {
+            accountId,
+            activityType: "DIVIDEND" as ActivityImport["activityType"],
+            symbol,
+            symbolName: symbol,
+            instrumentType: "STOCK",
+            quantity: quantity != null ? fmtAmt(quantity) : undefined,
+            amount: fmtAmt(absAmt),
+            currency: r.divisa,
+            comment: r.concepto || r.tipo,
+            isValid: true,
+            isDraft: false,
+          },
+        });
+      } else {
+        // Some Inversis exports carry dividend correction/reversal entries
+        // as negative "ABONO DE DIVIDENDO" rows (often prefixed with
+        // "ANUL."). Model them as cash outflows so account cash stays
+        // exact while preserving the raw descriptor for user review.
+        drafts.push(cashAct(accountId, "WITHDRAWAL", r.fechaOperacion, orderHint, absAmt, r.concepto || r.tipo));
+      }
+      continue;
+    }
+
+    if (
+      r.tipo === "COMPRA RV CONTADO SF" ||
+      r.tipo === "VENTA DE VALORES" ||
+      r.tipo === "COMPRA RF VCTO" ||
+      r.tipo === "AMORTIZACION RF"
+    ) {
+      const isBuy = r.tipo === "COMPRA RV CONTADO SF" || r.tipo === "COMPRA RF VCTO";
+      const instrumentType = r.tipo.includes("RF") ? "BOND" : "STOCK";
+      const { symbol, quantity } = conceptInstrument(r.concepto);
+      if (quantity == null || quantity === 0) {
+        skipped.push({
+          date: r.fechaOperacion,
+          source: "movimientos",
+          type: r.tipo,
+          description: r.concepto,
+          reason: "Could not extract quantity from concept text",
+        });
+        continue;
+      }
+      drafts.push({
+        day: r.fechaOperacion,
+        orderHint,
+        activity: {
+          accountId,
+          activityType: isBuy ? "BUY" : "SELL",
+          symbol,
+          symbolName: symbol,
+          instrumentType,
+          quoteCcy: r.divisa,
+          quantity: fmtAmt(quantity),
+          unitPrice: fmtAmt(absAmt / quantity),
+          fee: "0",
+          currency: r.divisa,
+          comment: `${r.tipo}${r.concepto ? ` - ${r.concepto}` : ""}`,
+          isValid: true,
+          isDraft: false,
+        },
+      });
       continue;
     }
 

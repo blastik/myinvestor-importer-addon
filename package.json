@@ -1,7 +1,7 @@
 {
   "name": "myinvestor-importer-addon",
-  "version": "1.0.1",
-  "description": "Import MyInvestor (Inversis) exports into Wealthfolio",
+  "version": "1.0.2",
+  "description": "Import MyInvestor and Inversis account exports into Wealthfolio",
   "type": "module",
   "main": "dist/addon.js",
   "author": "blastik",
