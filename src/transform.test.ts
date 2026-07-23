@@ -172,7 +172,7 @@ describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by con
 
 describe("cash-only movimientos rows", () => {
   it("maps custody/management fees and VAT to FEE", () => {
-    for (const tipo of ["COMISION CUSTODIA MYINVESTOR", "COMISION GESTION CARTERA OF", "IVA SOBRE COMISIONES"]) {
+    for (const tipo of ["COMISION CUSTODIA MYINVESTOR", "COMISIONES CUSTODIA", "COMISION GESTION CARTERA OF", "IVA SOBRE COMISIONES"]) {
       const { activities } = transform([], [movRow({ tipo, importe: "-2,48" })], CONFIG);
       expect(activities[0].activityType).toBe("FEE");
     }
@@ -217,6 +217,73 @@ describe("cash-only movimientos rows", () => {
     const { activities, skipped } = transform([], [movRow({ tipo: "SOMETHING NEW", importe: "+1,00" })], CONFIG);
     expect(activities).toHaveLength(0);
     expect(skipped[0].reason).toMatch(/unknown movimientos type/i);
+  });
+});
+
+describe("Inversis movimientos labels", () => {
+  it("maps COMPRA RV CONTADO SF to BUY using concept name/quantity", () => {
+    const { activities } = transform(
+      [],
+      [movRow({ tipo: "COMPRA RV CONTADO SF", concepto: "SAP AG @ 20", importe: "-2.642,00" })],
+      CONFIG,
+    );
+    expect(activities).toHaveLength(1);
+    expect(activities[0].activityType).toBe("BUY");
+    expect(activities[0].symbol).toBe("SAP AG");
+    expect(activities[0].quantity).toBe("20");
+    expect(parseFloat(String(activities[0].unitPrice))).toBeCloseTo(2642 / 20, 6);
+  });
+
+  it("maps VENTA DE VALORES to SELL using concept name/quantity", () => {
+    const { activities } = transform(
+      [],
+      [movRow({ tipo: "VENTA DE VALORES", concepto: "WESTERN DIGITAL @ 49", importe: "+13.041,48" })],
+      CONFIG,
+    );
+    expect(activities).toHaveLength(1);
+    expect(activities[0].activityType).toBe("SELL");
+    expect(activities[0].symbol).toBe("WESTERN DIGITAL");
+    expect(activities[0].quantity).toBe("49");
+    expect(parseFloat(String(activities[0].unitPrice))).toBeCloseTo(13041.48 / 49, 6);
+  });
+
+  it("maps COMPRA RF VCTO and AMORTIZACION RF to BUY/SELL bonds", () => {
+    const buy = transform(
+      [],
+      [movRow({ tipo: "COMPRA RF VCTO", concepto: "SGLT  100726 @ 51", importe: "-50.044,10" })],
+      CONFIG,
+    );
+    expect(buy.activities[0].activityType).toBe("BUY");
+    expect(buy.activities[0].instrumentType).toBe("BOND");
+
+    const sell = transform(
+      [],
+      [movRow({ tipo: "AMORTIZACION RF", concepto: "SGLT  100726 @ 51", importe: "+51.000,00" })],
+      CONFIG,
+    );
+    expect(sell.activities[0].activityType).toBe("SELL");
+    expect(sell.activities[0].instrumentType).toBe("BOND");
+  });
+
+  it("maps positive ABONO DE DIVIDENDO to DIVIDEND", () => {
+    const { activities } = transform(
+      [],
+      [movRow({ tipo: "ABONO DE DIVIDENDO", concepto: "MICRON TECHNOLOGY @ 11", importe: "+0,98" })],
+      CONFIG,
+    );
+    expect(activities).toHaveLength(1);
+    expect(activities[0].activityType).toBe("DIVIDEND");
+    expect(activities[0].symbol).toBe("MICRON TECHNOLOGY");
+  });
+
+  it("maps negative ABONO DE DIVIDENDO (anulacion) to WITHDRAWAL to keep cash balance exact", () => {
+    const { activities } = transform(
+      [],
+      [movRow({ tipo: "ABONO DE DIVIDENDO", concepto: "ANUL. NOVO NORD BR/RG-B @ 32", importe: "-14,51" })],
+      CONFIG,
+    );
+    expect(activities).toHaveLength(1);
+    expect(activities[0].activityType).toBe("WITHDRAWAL");
   });
 });
 

@@ -1,6 +1,6 @@
-# MyInvestor Importer
+# MyInvestor / Inversis Importer
 
-A Wealthfolio addon that imports MyInvestor (Inversis) exports into your portfolio.
+A Wealthfolio addon that imports MyInvestor and Inversis account exports into your portfolio.
 
 ## Overview
 
@@ -26,7 +26,7 @@ them directly, no conversion needed.
    - In Wealthfolio, go to **Settings → Add-ons**, click **Install from File**, and
      select the downloaded zip
 2. Go to **MyInvestor → Settings**
-3. Select your **MyInvestor account**
+3. Select your **MyInvestor/Inversis account**
 
 ## Importing
 
@@ -48,7 +48,13 @@ a smaller/less accurate picture — see below.
 | `REEMBOLSO` (fondos) + `REEMBOLSO IIC` (movimientos) | `SELL` |
 | `SUSCR.POR TRASPASO I` / `ALTA IIC SWITCH` (fondos only — no cash impact) | `BUY` at switch-day price |
 | `REEMB.POR TRASPASO I` / `BAJA IIC SWITCH` (fondos only — no cash impact) | `SELL` at switch-day price |
-| `COMISION CUSTODIA MYINVESTOR`, `COMISION GESTION CARTERA OF`, `IVA SOBRE COMISIONES` | `FEE` |
+| `COMPRA RV CONTADO SF` (movimientos) | `BUY` (symbol/quantity parsed from concept, EUR unit price derived from amount/quantity) |
+| `VENTA DE VALORES` (movimientos) | `SELL` (symbol/quantity parsed from concept, EUR unit price derived from amount/quantity) |
+| `COMPRA RF VCTO` (movimientos) | `BUY` bond |
+| `AMORTIZACION RF` (movimientos) | `SELL` bond |
+| `ABONO DE DIVIDENDO` positive | `DIVIDEND` |
+| `ABONO DE DIVIDENDO` negative (e.g. `ANUL.` reversal line) | `WITHDRAWAL` (cash correction) |
+| `COMISION CUSTODIA MYINVESTOR`, `COMISIONES CUSTODIA`, `COMISION GESTION CARTERA OF`, `IVA SOBRE COMISIONES` | `FEE` |
 | `LIQUIDAC. INTERESES` | `INTEREST` |
 | `CARGO RETENCION A CUENTA` | `TAX` |
 | `ABONO PROMOCION` | `CREDIT` (subtype `BONUS`) |

@@ -84,6 +84,30 @@ const MOVIMIENTOS_HTML = `
  </body>
 </html>`;
 
+const MOVIMIENTOS_HTML_MOJIBAKE = `
+<html>
+ <body>
+   <table border="1">
+    <tr>
+     <th>Fecha operaci�n</th>
+     <th>Fecha valor</th>
+     <th>Tipo de operaci�n</th>
+     <th>Concepto</th>
+     <th>Divisa</th>
+     <th>Importe</th>
+    </tr>
+    <tr>
+     <td align="center">23/07/2026&nbsp;</td>
+     <td align="center">27/07/2026&nbsp;</td>
+     <td>COMPRA RV CONTADO SF</td>
+     <td>SAP AG @ 20</td>
+     <td>EUR</td>
+     <td>-2.642,00</td>
+    </tr>
+   </table>
+ </body>
+</html>`;
+
 describe("parseMyInvestorHtml", () => {
   it("parses the fondos (consulta de operaciones) table", () => {
     const result = parseMyInvestorHtml(FONDOS_HTML);
@@ -117,5 +141,12 @@ describe("parseMyInvestorHtml", () => {
   it("returns unknown for unrelated HTML", () => {
     const result = parseMyInvestorHtml("<html><body><table><tr><td>x</td></tr></table></body></html>");
     expect(result.kind).toBe("unknown");
+  });
+
+  it("detects movimientos tables when headers contain mojibake accents (operaci�n)", () => {
+    const result = parseMyInvestorHtml(MOVIMIENTOS_HTML_MOJIBAKE);
+    expect(result.kind).toBe("movimientos");
+    if (result.kind !== "movimientos") throw new Error("expected movimientos");
+    expect(result.rows[0].tipo).toBe("COMPRA RV CONTADO SF");
   });
 });

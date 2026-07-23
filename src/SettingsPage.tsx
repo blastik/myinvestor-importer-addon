@@ -90,7 +90,7 @@ export function SettingsPage({ ctx }: { ctx: AddonContext }) {
 
   const handleSave = async () => {
     if (!settings.accountId) {
-      setError("Please select your MyInvestor account.");
+      setError("Please select your MyInvestor/Inversis account.");
       return;
     }
     setError("");
@@ -108,7 +108,7 @@ export function SettingsPage({ ctx }: { ctx: AddonContext }) {
   return (
     <div className="max-w-2xl space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-semibold">MyInvestor Importer — Settings</h1>
+        <h1 className="text-2xl font-semibold">MyInvestor / Inversis Importer — Settings</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           Configure once; settings are saved securely and pre-filled on every import.
         </p>
@@ -121,12 +121,12 @@ export function SettingsPage({ ctx }: { ctx: AddonContext }) {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground text-xs">
-            MyInvestor keeps cash and securities in a single account — unlike Trade Republic, there's
-            no cash/portfolio split to configure. Select the Wealthfolio account that represents your
-            MyInvestor cuenta.
+            MyInvestor/Inversis keeps cash and securities in a single account — unlike Trade Republic,
+            there's no cash/portfolio split to configure. Select the Wealthfolio account that
+            represents your MyInvestor/Inversis cuenta.
           </p>
           <div className="space-y-1">
-            <Label>MyInvestor account</Label>
+            <Label>MyInvestor/Inversis account</Label>
             <AccountSelect
               accounts={accounts}
               value={settings.accountId}

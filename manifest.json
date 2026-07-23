@@ -1,8 +1,8 @@
 {
   "id": "myinvestor-importer",
   "name": "MyInvestor Importer",
-  "version": "1.0.1",
-  "description": "Import MyInvestor (Inversis) exports into Wealthfolio. Merges the cuenta corriente and fondos exports into buy/sell/switch/cash activities on a single account.",
+  "version": "1.0.2",
+  "description": "Import MyInvestor and Inversis account exports into Wealthfolio. Merges the cuenta corriente and fondos exports into buy/sell/switch/cash activities on a single account.",
   "author": "blastik",
   "main": "dist/addon.js",
   "sdkVersion": "3.6.1",
@@ -18,7 +18,7 @@
     {
       "category": "accounts",
       "functions": [{ "name": "getAll", "isDeclared": true, "isDetected": false }],
-      "purpose": "List accounts so the user can select their MyInvestor account"
+      "purpose": "List accounts so the user can select their MyInvestor/Inversis account"
     },
     {
       "category": "activities",
@@ -28,7 +28,7 @@
         { "name": "create", "isDeclared": true, "isDetected": false },
         { "name": "update", "isDeclared": true, "isDetected": false }
       ],
-      "purpose": "Validate and import activities parsed from the MyInvestor exports; read existing account activities to avoid double-recording money already imported as a cross-account transfer by another addon"
+      "purpose": "Validate and import activities parsed from the MyInvestor/Inversis exports; read existing account activities to avoid double-recording money already imported as a cross-account transfer by another addon"
     },
     {
       "category": "assets",

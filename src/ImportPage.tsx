@@ -140,7 +140,7 @@ function UploadZone({
         }}
       />
       <Icons.Upload className="text-muted-foreground mx-auto mb-3 h-8 w-8" />
-      <p className="text-sm font-medium">Drop your MyInvestor exports here</p>
+      <p className="text-sm font-medium">Drop your MyInvestor / Inversis exports here</p>
       <p className="text-muted-foreground mt-1 text-xs">
         both the cuenta corriente "movimientos" and fondos "consulta de operaciones" files — or click
         to browse
@@ -612,7 +612,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
             <Icons.Settings className="text-muted-foreground mx-auto h-8 w-8" />
             <p className="font-medium">Settings not configured</p>
             <p className="text-muted-foreground text-sm">
-              Please go to the <strong>Settings</strong> tab and select your MyInvestor account before
+              Please go to the <strong>Settings</strong> tab and select your MyInvestor/Inversis account before
               importing.
             </p>
           </CardContent>
@@ -628,7 +628,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
     return (
       <div className="max-w-xl space-y-4 p-6">
         <div>
-          <h1 className="text-2xl font-semibold">Import MyInvestor exports</h1>
+          <h1 className="text-2xl font-semibold">Import MyInvestor / Inversis exports</h1>
           <p className="text-muted-foreground mt-1 text-sm">
             Export both files from inversis.com: Cuenta &gt; Corriente &gt; Operaciones y consultas &gt;
             Movimientos, and Inversiones &gt; Fondos &gt; Operaciones y consultas &gt; Consulta de
