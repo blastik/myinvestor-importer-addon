@@ -94,6 +94,10 @@ This retroactive check was written and shipped before the `assetSymbol` filter b
 - Fondos-only: traspasos/switches work fully (never needed cash data). Plain `SUSCRIPCION`/`REEMBOLSO` still import as `BUY`/`SELL` but without a verified `fxRate` (native-currency booking).
 - Movimientos-only: all cash-only activity types (fees, interest, deposits, etc.) work fully. `SUSCRIPCION IIC`/`REEMBOLSO IIC` rows are skipped (no ISIN/quantity available) and surfaced in the "Unsupported" tab for manual review — never silently dropped.
 
+## New transaction types must land in the fixtures too
+
+Whenever `transform.ts`/`parseFiles.ts` gains support for a new `tipo`/`concepto` row type (a new movimientos type, a new fondos operation, a new account-format quirk), add anonymized rows exercising it to `src/__fixtures__/sample-fondos.xls`/`sample-movimientos.xls` (fabricated ISINs/amounts/concepts, real encoding/HTML quirks — see `src/fixtures.test.ts`) in the same PR — not just a unit test. PR #3 added several new movimientos types (Inversis account variants, `BIZUM ENVIADO`/`RECIBIDO`, `COMPRA COMERCIO O/L`, `TRANSF INMEDIATA EMITIDA`, dividends, Letras del Tesoro) with only `transform.test.ts`/`parseFiles.test.ts` unit coverage and no fixture update, leaving the end-to-end suite blind to them.
+
 ## Releasing
 
 Same gate as the trade-republic-importer-addon this is modeled after: the release workflow only creates a GitHub release when `manifest.json`'s version has no matching git tag yet. Whenever a change touches `src/`, `manifest.json` permissions/metadata, or transaction-mapping behavior, proactively propose a semver bump before merging. Apply it to both `manifest.json` and `package.json`, add a `CHANGELOG.md` entry, then push/merge to `main`.
