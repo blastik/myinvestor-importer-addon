@@ -14,7 +14,7 @@ pnpm bundle                # Build + create ZIP for local Wealthfolio installati
 
 ## Stack
 
-- **Runtime / package manager**: Node 24, pnpm 10 (versions pinned in `.tool-versions`)
+- **Runtime / package manager**: Node 24, pnpm 11 (versions pinned in `.tool-versions`, which is gitignored — see the CI workflow's `pnpm/action-setup` `version:` input for the source of truth)
 - **Build**: Vite 7 — outputs a single `dist/addon.js` (ES module, no zip)
 - **Tests**: Vitest 4 — `src/transform.test.ts` (pure logic) + `src/parseFiles.test.ts` (needs `happy-dom` for `DOMParser`, set via the `// @vitest-environment happy-dom` pragma at the top of that file only — `transform.test.ts` doesn't need DOM and stays on the fast default node environment) + `src/fixtures.test.ts` (end-to-end against sanitized real-export fixtures in `src/__fixtures__/`; stays on the default node environment and provides `DOMParser` from a manually-constructed `happy-dom` `Window` instead of the `@vitest-environment` pragma, because that pragma makes Vite 7/Vitest 4 externalize `node:fs`/`node:path` as browser stubs that throw at runtime — see the file for the workaround)
 - **Type checking**: `tsc --noEmit`
