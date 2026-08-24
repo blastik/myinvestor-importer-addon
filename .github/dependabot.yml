@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # pnpm-managed dependencies (dependencies, devDependencies, peerDependencies)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Actions used in .github/workflows/*.yml
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
