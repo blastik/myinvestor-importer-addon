@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2] - 2026-08-24
+
+### Changed
+
+- Updated dependencies: `@wealthfolio/addon-sdk`/`ui`/`addon-dev-tools` 3.6.1 → 3.7.0, `react`/`react-dom` 19.2.7 → 19.2.8, `tailwindcss`/`@tailwindcss/vite` 4.3.2 → 4.3.3, `vitest` 4.1.10 → 4.1.11, `happy-dom` 15 → 20, `vite` 7 → 8, `@vitejs/plugin-react` 4 → 6, `typescript` 5.9 → 7.0, `@types/node` pinned to the latest 24.x release matching this addon's pinned Node 24 runtime (not the newer 26.x types)
+- Bumped CI/release workflow actions: `actions/checkout` v4 → v7, `actions/setup-node` v4 → v7, `pnpm/action-setup` v4 → v6, `softprops/action-gh-release` v2 → v3
+- Added `.github/dependabot.yml` for monthly automated dependency-update PRs (npm + github-actions ecosystems)
+
 ## [1.0.1] - 2026-07-10
 
 ### Fixed

@@ -1,11 +1,11 @@
 {
   "id": "myinvestor-importer",
   "name": "MyInvestor Importer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Import MyInvestor (Inversis) exports into Wealthfolio. Merges the cuenta corriente and fondos exports into buy/sell/switch/cash activities on a single account.",
   "author": "blastik",
   "main": "dist/addon.js",
-  "sdkVersion": "3.6.1",
+  "sdkVersion": "3.7.0",
   "minWealthfolioVersion": "3.6.0",
   "enabled": true,
   "hostDependencies": {

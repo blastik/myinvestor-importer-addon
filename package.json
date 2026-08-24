@@ -1,6 +1,6 @@
 {
   "name": "myinvestor-importer-addon",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Import MyInvestor (Inversis) exports into Wealthfolio",
   "type": "module",
   "main": "dist/addon.js",
@@ -11,7 +11,13 @@
     "type": "git",
     "url": "https://github.com/blastik/myinvestor-importer-addon.git"
   },
-  "keywords": ["wealthfolio", "addon", "myinvestor", "inversis", "importer"],
+  "keywords": [
+    "wealthfolio",
+    "addon",
+    "myinvestor",
+    "inversis",
+    "importer"
+  ],
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
@@ -23,7 +29,6 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {},
   "peerDependencies": {
     "@wealthfolio/addon-sdk": "^3.6.0",
     "@wealthfolio/ui": "^3.6.0",
@@ -31,21 +36,21 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.0",
-    "@types/node": "^20.0.0",
-    "@types/react": "^19.2.13",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^4.3.4",
-    "@wealthfolio/addon-dev-tools": "^3.6.1",
-    "@wealthfolio/addon-sdk": "^3.6.1",
-    "@wealthfolio/ui": "^3.6.1",
-    "happy-dom": "^15.0.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "tailwindcss": "^4.1.0",
-    "typescript": "^5.9.0",
-    "vite": "^7.1.5",
-    "vitest": "^4.1.0"
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.0",
+    "@wealthfolio/addon-dev-tools": "^3.7.0",
+    "@wealthfolio/addon-sdk": "^3.7.0",
+    "@wealthfolio/ui": "^3.7.0",
+    "happy-dom": "^20.11.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   },
   "files": [
     "dist/",
