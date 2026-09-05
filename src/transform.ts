@@ -79,6 +79,20 @@ function conceptShares(concepto: string): number | undefined {
   return Number.isNaN(n) ? undefined : n;
 }
 
+function conceptInstrument(concepto: string): { symbol: string; quantity?: number } {
+  const at = concepto.lastIndexOf("@");
+  if (at === -1) return { symbol: concepto.trim().replace(/\s+/g, " ") || "UNKNOWN" };
+  const symbol = concepto
+    .slice(0, at)
+    .trim()
+    .replace(/\s+/g, " ");
+  const quantity = movimientosNum(concepto.slice(at + 1).trim());
+  return {
+    symbol: symbol || "UNKNOWN",
+    quantity: Number.isNaN(quantity) ? undefined : quantity,
+  };
+}
+
 function findCashMatch(
   pool: { row: MovimientosRow; index: number; consumed: boolean }[],
   expectedTipo: string,
@@ -286,8 +300,106 @@ export function transform(
       continue;
     }
 
-    if (r.tipo === "COMISION CUSTODIA MYINVESTOR" || r.tipo === "COMISION GESTION CARTERA OF" || r.tipo === "IVA SOBRE COMISIONES") {
+    if (r.tipo === "COMISION CUSTODIA MYINVESTOR" || r.tipo === "COMISIONES CUSTODIA" || r.tipo === "COMISION GESTION CARTERA OF" || r.tipo === "IVA SOBRE COMISIONES") {
       drafts.push(cashAct(accountId, "FEE", r.fechaOperacion, orderHint, absAmt, r.tipo + (r.concepto ? ` - ${r.concepto}` : "")));
+      continue;
+    }
+
+    if (r.tipo === "ABONO DE DIVIDENDO") {
+      const { symbol, quantity } = conceptInstrument(r.concepto);
+      if (amt >= 0) {
+        if (quantity == null) {
+          // No "<instrument> @ <shares>" in the concept means we have no
+          // trustworthy symbol either — importing it would attach the
+          // dividend to a made-up instrument. Surface it for manual review
+          // instead, same as the BUY/SELL block below.
+          skipped.push({
+            date: r.fechaOperacion,
+            source: "movimientos",
+            type: r.tipo,
+            description: r.concepto,
+            reason: "Could not extract instrument name/quantity from concept text",
+          });
+          continue;
+        }
+        drafts.push({
+          day: r.fechaOperacion,
+          orderHint,
+          activity: {
+            accountId,
+            activityType: "DIVIDEND",
+            symbol,
+            symbolName: symbol,
+            instrumentType: "STOCK",
+            quantity: fmtAmt(quantity),
+            amount: fmtAmt(absAmt),
+            currency: r.divisa,
+            comment: r.concepto || r.tipo,
+            isValid: true,
+            isDraft: false,
+          },
+        });
+      } else {
+        // Some Inversis exports carry dividend correction/reversal entries
+        // as negative "ABONO DE DIVIDENDO" rows (often prefixed with
+        // "ANUL."). WITHDRAWAL would book the right cash outflow but
+        // unconditionally inflates net_contribution (handle_withdrawal in
+        // Wealthfolio's holdings calculator has no subtype escape, unlike
+        // CREDIT) — wrongly counting a dividend clawback as money the user
+        // personally pulled out. FEE is also a hardcoded cash outflow
+        // (economic_events.rs's type_directed_cash_effect) but is
+        // unconditionally excluded from net_contribution ("Charges do NOT
+        // affect net_contribution", cash_flows.rs), matching how the
+        // original DIVIDEND credit never touched it either. CREDIT (with a
+        // REFUND/REBATE subtype) can't be used instead — it's hardcoded as
+        // a cash inflow only, same bucket as DIVIDEND/INTEREST, so it can
+        // never represent this outflow.
+        drafts.push(
+          cashAct(accountId, "FEE", r.fechaOperacion, orderHint, absAmt, r.concepto || r.tipo, "REVERSAL"),
+        );
+      }
+      continue;
+    }
+
+    if (
+      r.tipo === "COMPRA RV CONTADO SF" ||
+      r.tipo === "COMPRA RV CONTADO" ||
+      r.tipo === "VENTA DE VALORES" ||
+      r.tipo === "COMPRA RF VCTO" ||
+      r.tipo === "AMORTIZACION RF"
+    ) {
+      const isBuy = r.tipo === "COMPRA RV CONTADO SF" || r.tipo === "COMPRA RV CONTADO" || r.tipo === "COMPRA RF VCTO";
+      const instrumentType = r.tipo.includes("RF") ? "BOND" : "STOCK";
+      const { symbol, quantity } = conceptInstrument(r.concepto);
+      if (quantity == null || quantity === 0) {
+        skipped.push({
+          date: r.fechaOperacion,
+          source: "movimientos",
+          type: r.tipo,
+          description: r.concepto,
+          reason: "Could not extract quantity from concept text",
+        });
+        continue;
+      }
+      drafts.push({
+        day: r.fechaOperacion,
+        orderHint,
+        activity: {
+          accountId,
+          activityType: isBuy ? "BUY" : "SELL",
+          symbol,
+          symbolName: symbol,
+          instrumentType,
+          quoteCcy: r.divisa,
+          quantity: fmtAmt(quantity),
+          unitPrice: fmtAmt(absAmt / quantity),
+          fee: "0",
+          currency: r.divisa,
+          comment: `${r.tipo}${r.concepto ? ` - ${r.concepto}` : ""}`,
+          isValid: true,
+          isDraft: false,
+        },
+      });
       continue;
     }
 
@@ -306,13 +418,16 @@ export function transform(
       continue;
     }
 
-    if (r.tipo === "TRANSFERENCIA SEPA" || r.tipo === "TRANSFERENCIA INMEDIATA") {
+    if (r.tipo === "TRANSFERENCIA SEPA" || r.tipo === "TRANSFERENCIA INMEDIATA" || r.tipo === "TRANSF INMEDIATA EMITIDA") {
       // A bank transfer in is often also recorded as a TRANSFER_IN by
       // whichever addon manages the source account (e.g.
       // trade-republic-importer-addon's Transfer Patterns) — importing it
       // again here as a DEPOSIT would double-count the same money as both
-      // spending on that side and external income on this side.
-      if (amt >= 0) {
+      // spending on that side and external income on this side. Deliberately
+      // scoped to just SEPA/INMEDIATA, not TRANSF INMEDIATA EMITIDA (an
+      // outgoing transfer, which shouldn't be matched against a TRANSFER_IN
+      // even in the unusual case of a non-negative amount, e.g. a reversal).
+      if (amt >= 0 && r.tipo !== "TRANSF INMEDIATA EMITIDA") {
         const transferIn = findAmountDateMatch(existingCashTransfersIn, r.fechaOperacion, absAmt);
         if (transferIn) {
           // The addons' import order isn't controlled by either one: if this
@@ -343,6 +458,18 @@ export function transform(
       drafts.push(
         cashAct(accountId, amt >= 0 ? "DEPOSIT" : "WITHDRAWAL", r.fechaOperacion, orderHint, absAmt, r.concepto || r.tipo),
       );
+      continue;
+    }
+
+    // Bizum (P2P) and card purchases are plain personal cash movements, same
+    // as any other current-account transaction — just DEPOSIT/WITHDRAWAL.
+    if (r.tipo === "BIZUM ENVIADO" || r.tipo === "COMPRA COMERCIO O/L") {
+      drafts.push(cashAct(accountId, "WITHDRAWAL", r.fechaOperacion, orderHint, absAmt, r.concepto || r.tipo));
+      continue;
+    }
+
+    if (r.tipo === "BIZUM RECIBIDO") {
+      drafts.push(cashAct(accountId, "DEPOSIT", r.fechaOperacion, orderHint, absAmt, r.concepto || r.tipo));
       continue;
     }
 

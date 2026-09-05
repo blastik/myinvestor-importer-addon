@@ -53,7 +53,7 @@ describe("real-export fixtures", () => {
     const movimientos = parseMyInvestorHtml(movimientosHtml);
     if (fondos.kind !== "fondos" || movimientos.kind !== "movimientos") throw new Error("wrong kind");
     expect(fondos.rows).toHaveLength(9);
-    expect(movimientos.rows).toHaveLength(15);
+    expect(movimientos.rows).toHaveLength(27);
   });
 
   describe("end-to-end transform", () => {
@@ -64,9 +64,12 @@ describe("real-export fixtures", () => {
 
     it("produces the expected total activity/skip counts", () => {
       // 8 fund BUY/SELL (2 matched + 2 identical same-day traspaso-in
-      // fragments + 1 traspaso-out + ALTA/BAJA IIC SWITCH pair) + 10 cash
-      // activities (3 FEE, 1 INTEREST, 1 TAX, 1 CREDIT, 2 DEPOSIT, 2 WITHDRAWAL).
-      expect(activities).toHaveLength(18);
+      // fragments + 1 traspaso-out + ALTA/BAJA IIC SWITCH pair) + 5
+      // securities BUY/SELL from movimientos alone (2 stock buys, 1 stock
+      // sell, 1 Letra del Tesoro buy + its amortizacion) + 1 DIVIDEND + 16
+      // cash activities (4 FEE, 1 INTEREST, 1 TAX, 1 CREDIT, 3 DEPOSIT,
+      // 6 WITHDRAWAL).
+      expect(activities).toHaveLength(30);
       // 1 unmatched fondos SUSCRIPCION + 1 unmatched movimientos SUSCRIPCION IIC + 1 APERTURA.
       expect(skipped).toHaveLength(3);
     });
@@ -126,6 +129,40 @@ describe("real-export fixtures", () => {
       expect(byComment("Retirada a cuenta personal")?.activityType).toBe("WITHDRAWAL");
       expect(byComment("Aportacion a mi cartera")?.activityType).toBe("DEPOSIT");
       expect(byComment("Reembolso cartera indexada")?.activityType).toBe("WITHDRAWAL");
+    });
+
+    it("maps the Inversis-flavoured movimientos rows (securities, dividends, Letras del Tesoro)", () => {
+      const byComment = (needle: string) => activities.find((a) => a.comment?.includes(needle));
+      expect(byComment("COMISIONES CUSTODIA")?.activityType).toBe("FEE");
+
+      const stockBuy = byComment("COMPRA RV CONTADO SF");
+      expect(stockBuy?.activityType).toBe("BUY");
+      expect(stockBuy?.symbol).toBe("SAMPLE TECH CORP");
+      expect(stockBuy?.instrumentType).toBe("STOCK");
+      expect(stockBuy?.quantity).toBe("20");
+      expect(parseFloat(String(stockBuy?.unitPrice))).toBeCloseTo(2642 / 20, 6);
+
+      expect(byComment("COMPRA RV CONTADO - SAMPLE SEMI INC")?.activityType).toBe("BUY");
+      expect(byComment("VENTA DE VALORES")?.activityType).toBe("SELL");
+
+      const letraBuy = byComment("COMPRA RF VCTO");
+      expect(letraBuy?.activityType).toBe("BUY");
+      expect(letraBuy?.instrumentType).toBe("BOND");
+      expect(letraBuy?.symbol).toBe("SLTR 100726");
+      const letraAmort = byComment("AMORTIZACION RF");
+      expect(letraAmort?.activityType).toBe("SELL");
+      expect(letraAmort?.instrumentType).toBe("BOND");
+
+      const dividend = activities.find((a) => a.activityType === "DIVIDEND");
+      expect(dividend?.symbol).toBe("SAMPLE SEMI INC");
+      const dividendReversal = byComment("ANUL. SAMPLE SEMI INC");
+      expect(dividendReversal?.activityType).toBe("FEE");
+      expect(dividendReversal?.subtype).toBe("REVERSAL");
+
+      expect(byComment("Sample Cena Amigos")?.activityType).toBe("WITHDRAWAL");
+      expect(byComment("Sin concepto")?.activityType).toBe("DEPOSIT");
+      expect(byComment("SAMPLE SHOP ONLINE")?.activityType).toBe("WITHDRAWAL");
+      expect(byComment("Sample Beneficiario Dos")?.activityType).toBe("WITHDRAWAL");
     });
   });
 });

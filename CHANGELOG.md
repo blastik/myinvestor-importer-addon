@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.1.0] - 2026-08-31
+
+### Added
+
+- Added support for Inversis.com movimientos operation labels found in brokerage exports, including:
+	- `COMPRA RV CONTADO SF` / `COMPRA RV CONTADO` -> `BUY`
+	- `VENTA DE VALORES` -> `SELL`
+	- `COMPRA RF VCTO` -> `BUY` (`BOND`, e.g. Letras del Tesoro)
+	- `AMORTIZACION RF` -> `SELL` (`BOND`)
+	- `ABONO DE DIVIDENDO` -> `DIVIDEND` for positive amounts, and `FEE` (subtype `REVERSAL`) for negative reversal lines (e.g. `ANUL.`) — a real cash outflow like `WITHDRAWAL`, but (unlike `WITHDRAWAL`) doesn't inflate `net_contribution`, matching how the original dividend credit never affected it either.
+	- `COMISIONES CUSTODIA` (alternate custody-fee label) -> `FEE`
+- Added support for personal current-account movimientos rows found in real exports:
+	- `BIZUM ENVIADO` -> `WITHDRAWAL`, `BIZUM RECIBIDO` -> `DEPOSIT`
+	- `COMPRA COMERCIO O/L` (card purchase) -> `WITHDRAWAL`
+	- `TRANSF INMEDIATA EMITIDA` -> `WITHDRAWAL`
+- Added parsing of instrument name and quantity from movimientos `Concepto` values in the format `<instrument> @ <quantity>` for stock/bond/dividend rows. A dividend row whose concept has no parseable instrument/quantity is surfaced under "Unsupported" rather than imported against a made-up symbol.
+- Extended the shared anonymized fixtures (`src/__fixtures__/sample-movimientos.xls`) with rows covering every transaction type above, asserted end-to-end in `src/fixtures.test.ts`.
+
+### Changed
+
+- Added parser coverage for mojibake header variants such as `Tipo de operación`.
+- Updated dependencies: `@vitejs/plugin-react` 6.1.0 → 6.1.1, `happy-dom` 20.11.6 → 20.11.15
+
 ## [1.0.2] - 2026-08-24
 
 ### Changed

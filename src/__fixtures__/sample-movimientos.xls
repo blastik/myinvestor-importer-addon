@@ -166,6 +166,114 @@ var nombreP = 'fo_co_conope';
 	 <td>EUR</td>
 	 <td>-10,00</td>
 	</tr>
+
+    <tr>
+	 <td align="center">10/07/2026&nbsp;</td>
+	 <td align="center">10/07/2026&nbsp;</td>
+	 <td>COMISIONES CUSTODIA</td>
+	 <td>EFECTIVO-EUR @ 0</td>
+	 <td>EUR</td>
+	 <td>-1,15</td>
+	</tr>
+
+    <tr>
+	 <td align="center">14/07/2026&nbsp;</td>
+	 <td align="center">16/07/2026&nbsp;</td>
+	 <td>COMPRA RV CONTADO SF</td>
+	 <td>SAMPLE TECH CORP @ 20</td>
+	 <td>EUR</td>
+	 <td>-2.642,00</td>
+	</tr>
+
+    <tr>
+	 <td align="center">15/07/2026&nbsp;</td>
+	 <td align="center">17/07/2026&nbsp;</td>
+	 <td>COMPRA RV CONTADO</td>
+	 <td>SAMPLE SEMI INC @ 10</td>
+	 <td>EUR</td>
+	 <td>-1.490,14</td>
+	</tr>
+
+    <tr>
+	 <td align="center">21/07/2026&nbsp;</td>
+	 <td align="center">23/07/2026&nbsp;</td>
+	 <td>VENTA DE VALORES</td>
+	 <td>SAMPLE TECH CORP @ 5</td>
+	 <td>EUR</td>
+	 <td>+700,00</td>
+	</tr>
+
+    <tr>
+	 <td align="center">24/07/2026&nbsp;</td>
+	 <td align="center">24/07/2026&nbsp;</td>
+	 <td>ABONO DE DIVIDENDO</td>
+	 <td>SAMPLE SEMI INC @ 10</td>
+	 <td>EUR</td>
+	 <td>+0,98</td>
+	</tr>
+
+    <tr>
+	 <td align="center">27/07/2026&nbsp;</td>
+	 <td align="center">27/07/2026&nbsp;</td>
+	 <td>ABONO DE DIVIDENDO</td>
+	 <td>ANUL. SAMPLE SEMI INC @ 10</td>
+	 <td>EUR</td>
+	 <td>-0,98</td>
+	</tr>
+
+    <tr>
+	 <td align="center">03/08/2026&nbsp;</td>
+	 <td align="center">05/08/2026&nbsp;</td>
+	 <td>COMPRA RF VCTO</td>
+	 <td>SLTR  100726 @ 51</td>
+	 <td>EUR</td>
+	 <td>-50.044,10</td>
+	</tr>
+
+    <tr>
+	 <td align="center">10/07/2027&nbsp;</td>
+	 <td align="center">10/07/2027&nbsp;</td>
+	 <td>AMORTIZACION RF</td>
+	 <td>SLTR  100726 @ 51</td>
+	 <td>EUR</td>
+	 <td>+51.000,00</td>
+	</tr>
+
+    <tr>
+	 <td align="center">06/08/2026&nbsp;</td>
+	 <td align="center">06/08/2026&nbsp;</td>
+	 <td>BIZUM ENVIADO</td>
+	 <td>Sample Cena Amigos</td>
+	 <td>EUR</td>
+	 <td>-9,79</td>
+	</tr>
+
+    <tr>
+	 <td align="center">07/08/2026&nbsp;</td>
+	 <td align="center">07/08/2026&nbsp;</td>
+	 <td>BIZUM RECIBIDO</td>
+	 <td>Sin concepto</td>
+	 <td>EUR</td>
+	 <td>+21,00</td>
+	</tr>
+
+    <tr>
+	 <td align="center">08/08/2026&nbsp;</td>
+	 <td align="center">08/08/2026&nbsp;</td>
+	 <td>COMPRA COMERCIO O/L</td>
+	 <td>SAMPLE SHOP ONLINE</td>
+	 <td>EUR</td>
+	 <td>-3,50</td>
+	</tr>
+
+    <tr>
+	 <td align="center">11/08/2026&nbsp;</td>
+	 <td align="center">11/08/2026&nbsp;</td>
+	 <td>TRANSF INMEDIATA EMITIDA</td>
+	 <td>Sample Beneficiario Dos</td>
+	 <td>EUR</td>
+	 <td>-17,81</td>
+	</tr>
    </table>
  </body>
 </html>
