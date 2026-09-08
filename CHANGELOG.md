@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.2] - 2026-09-08
+
+### Fixed
+
+- The Cuentas/movimientos upload box's on-screen menu path (shown when a dropped file isn't recognised) said `Cuenta > Corriente > Operaciones y consultas > Consulta de operaciones` — the trailing segment was actually the fondos screen's menu label, copy-pasted in by mistake. The real Inversis menu (confirmed against a live screenshot) is `Cuentas > Corriente > Operaciones y consultas > Movimientos`. Also corrected in README.md and CLAUDE.md, which had the same wrong text.
+
 ## [1.3.1] - 2026-09-08
 
 ### Fixed
