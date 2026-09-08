@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { parseMyInvestorHtml } from "./parseFiles";
+import { describeUnknownFormat, parseMyInvestorHtml } from "./parseFiles";
 
 const FONDOS_HTML = `
 <html>
@@ -148,5 +148,95 @@ describe("parseMyInvestorHtml", () => {
     expect(result.kind).toBe("movimientos");
     if (result.kind !== "movimientos") throw new Error("expected movimientos");
     expect(result.rows[0].tipo).toBe("COMPRA RV CONTADO SF");
+  });
+});
+
+// "Cuenta > Corriente > Movimientos" screen ("Movimientos de cuentas" title):
+// 7 columns instead of 6 — no Divisa column, a Cargo/Abono C/A indicator
+// column, and a trailing running Saldo balance column.
+const MOVIMIENTOS_CUENTA_HTML = `
+<html>
+ <body>
+   <table border="1">
+    <tr>
+     <th>Fecha operación</th>
+     <th>FECHA VALOR</th>
+     <th>Tipo de operación</th>
+     <th>Concepto</th>
+     <th colspan="2">Cargo/Abono<br>Importe</th>
+     <th>Saldo</th>
+    </tr>
+    <tr>
+     <td align="center">01/07/2026</td>
+     <td colspan="5">Saldo Inicio</td>
+     <td>100,00</td>
+    </tr>
+    <tr>
+     <td align="center">06/01/2026&nbsp;</td>
+     <td align="center">09/01/2026&nbsp;</td>
+     <td>SUSCRIPCION IIC</td>
+     <td>SAMPLE WORLD INDEX FUND</td>
+     <td>C</td>
+     <td>-53,71</td>
+     <td>46,29</td>
+    </tr>
+    <tr>
+     <td align="center">03/07/2026&nbsp;</td>
+     <td align="center">03/07/2026&nbsp;</td>
+     <td>COMISION CUSTODIA MYINVESTOR</td>
+     <td>EFECTIVO-EUR @ 0</td>
+     <td>C</td>
+     <td>-2,48</td>
+     <td>43,81</td>
+    </tr>
+   </table>
+ </body>
+</html>`;
+
+describe("parseMyInvestorHtml (Cuenta > Corriente > Movimientos 7-column variant)", () => {
+  it("parses the 7-column movimientos table, ignoring the Cargo/Abono and Saldo columns", () => {
+    const result = parseMyInvestorHtml(MOVIMIENTOS_CUENTA_HTML);
+    expect(result.kind).toBe("movimientos");
+    if (result.kind !== "movimientos") throw new Error("expected movimientos");
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0]).toMatchObject({
+      fechaOperacion: "2026-01-06",
+      fechaValor: "2026-01-09",
+      tipo: "SUSCRIPCION IIC",
+      concepto: "SAMPLE WORLD INDEX FUND",
+      divisa: "EUR",
+      importe: "-53,71",
+    });
+  });
+
+  it("filters out the Saldo Inicio/Final summary rows (wrong cell count)", () => {
+    const result = parseMyInvestorHtml(MOVIMIENTOS_CUENTA_HTML);
+    if (result.kind !== "movimientos") throw new Error("expected movimientos");
+    expect(result.rows.every((r) => r.tipo !== "Saldo Inicio")).toBe(true);
+  });
+});
+
+describe("describeUnknownFormat", () => {
+  it("summarizes title, headers, and row shapes without leaking cell content", () => {
+    const summary = describeUnknownFormat(
+      `<html><head><title>Some Other Export</title></head><body>
+        <table><tr><th>Foo</th><th>Bar</th></tr>
+        <tr><td>SECRET-AMOUNT-123</td><td>Someone's Name</td></tr>
+        <tr><td>a</td><td>b</td></tr>
+        </table>
+      </body></html>`,
+    );
+    expect(summary).toContain("Title: Some Other Export");
+    expect(summary).toContain("Foo | Bar");
+    expect(summary).toContain("2 row(s) with 2 <td> cells");
+    expect(summary).not.toContain("SECRET-AMOUNT-123");
+    expect(summary).not.toContain("Someone's Name");
+  });
+
+  it("handles HTML with no title or table gracefully", () => {
+    const summary = describeUnknownFormat("<html><body><p>nothing here</p></body></html>");
+    expect(summary).toContain("(no <title> found)");
+    expect(summary).toContain("(none found)");
+    expect(summary).toContain("no <tr> with <td> cells found");
   });
 });

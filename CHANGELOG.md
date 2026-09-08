@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.0] - 2026-09-08
+
+### Added
+
+- Support for a second, 7-column movimientos ("Cuenta > Corriente > Movimientos") export shape — confirmed to be what current real MyInvestor accounts actually produce (`Movimientos de cuentas` title, `Cargo/Abono` indicator + running `Saldo` columns, no `Divisa` column). Files in this shape were previously rejected outright as "not a MyInvestor export".
+- Fund `SUSCRIPCION`/`REEMBOLSO` rows now also join to their cash counterpart by fund-name similarity when the movimientos `Concepto` carries no share-count suffix (true for the 7-column shape above, and confirmed to vary row-by-row even within one real account's history) — still deriving the exact cash-based price/`fxRate`, not settling for a native-price guess or skipping a real match.
+- Unrecognized-file errors now include a "report it on GitHub" link, prefilled with a structural-only diagnostic (the file's `<title>`, header text, and a `<td>`-count-per-row histogram) — deliberately excludes actual cell content (dates/amounts/fund names).
+- Two separate upload boxes (Cuentas / Inversiones) instead of one combined drop zone, rejecting a file dropped in the wrong box with a specific correction instead of silently misfiling it. Each box accepts more than one file (e.g. one export per month) instead of only the most recent upload.
+
+### Changed
+
+- Uploading a file no longer jumps straight to validation/mapping — the user reviews the parsed row/skip counts and clicks **Continue** to proceed, so a mis-dropped file (or one of several files still to add) can be reviewed or removed first instead of the import racing ahead automatically.
+- `src/__fixtures__/sample-movimientos.xls` now uses the real 7-column shape (previously 6-column) so the end-to-end suite exercises what real accounts actually export.
+- Updated CLAUDE.md/README to document both movimientos shapes and the fund-name-matching fallback trade-off.
+- Settings/README account-picker copy now explicitly says to select the securities/investment account, not a separate cash/checking account, to head off a real point of confusion around MyInvestor's "cuenta corriente" naming.
+- Documented that this addon's scope is the securities/investment account only — a separate personal cash/checking account (BIZUM, card purchases, loan payments, no fund activity) isn't supported and would need a Trade Republic–style two-account mapping that doesn't exist yet.
+- Removed the broken inversis.com deep links from the upload UI.
+
 ## [1.2.0] - 2026-09-08
 
 ### Fixed
