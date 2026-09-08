@@ -118,7 +118,7 @@ interface FileSlot {
 const EXPORT_INFO: Record<"movimientos" | "fondos", { title: string; menuPath: string }> = {
   movimientos: {
     title: "Cuentas",
-    menuPath: "Cuenta > Corriente > Operaciones y consultas > Consulta de operaciones",
+    menuPath: "Cuentas > Corriente > Operaciones y consultas > Movimientos",
   },
   fondos: {
     title: "Inversiones",
@@ -540,7 +540,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
           setFileError(
             <>
               {file.name} wasn't recognised as a MyInvestor/Inversis export. Make sure you exported from
-              "Operaciones y consultas" under either Cuenta &gt; Corriente or Inversiones &gt; Fondos.
+              "Operaciones y consultas" under either Cuentas &gt; Corriente or Inversiones &gt; Fondos.
               If you're sure it's a valid export, it may be a format this addon doesn't support yet —{" "}
               <a href={issueUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
                 report it on GitHub

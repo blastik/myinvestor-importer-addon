@@ -7,13 +7,13 @@ A Wealthfolio addon that imports MyInvestor and Inversis account exports into yo
 Getting the full picture requires **two exports** from inversis.com, because
 neither one alone has everything:
 
-- **Movimientos** (`Cuenta > Corriente > Operaciones y consultas > Consulta de operaciones`) —
+- **Movimientos** (`Cuentas > Corriente > Operaciones y consultas > Movimientos`) —
   the EUR cash ledger: deposits, fees, interest, and the EUR cash side of
   every real fund buy/sell. Two export shapes are auto-detected — a 6-column
-  one that lets fund buys/sells be precisely tied to their cash movement, and
-  the 7-column one most current MyInvestor accounts actually produce, which
-  can't be (see below).
-- **Consulta de operaciones** (`Inversiones > Fondos > Operaciones y consultas > Consulta de operaciones`) —
+  one whose concept text always carries the fund's share count, and a
+  7-column one that usually doesn't (see below for how fund buys/sells still
+  get matched to their cash movement either way).
+- **Fondos** (`Inversiones > Fondos > Operaciones y consultas > Consulta de operaciones`) —
   fund-level detail (ISIN, quantity, native-currency price) for every fund
   movement, including tax-free fund switches (*traspasos*) that never touch
   cash and only appear here.
@@ -58,8 +58,8 @@ a smaller/less accurate picture — see below.
 | --- | --- |
 | `SUSCRIPCION` (fondos) + `SUSCRIPCION IIC` (movimientos), joined by settlement date + share count when the movimientos export includes one (see "Two movimientos export shapes" below) | `BUY` |
 | `REEMBOLSO` (fondos) + `REEMBOLSO IIC` (movimientos) | `SELL` |
-| `SUSCR.POR TRASPASO I` / `ALTA IIC SWITCH` (fondos only — no cash impact) | `BUY` at switch-day price |
-| `REEMB.POR TRASPASO I` / `BAJA IIC SWITCH` (fondos only — no cash impact) | `SELL` at switch-day price |
+| `SUSCR.POR TRASPASO I` / `ALTA IIC SWITCH` (fondos only — no cash impact) | `BUY` at switch-day price (non-EUR funds get a historical `fxRate`, see below) |
+| `REEMB.POR TRASPASO I` / `BAJA IIC SWITCH` (fondos only — no cash impact) | `SELL` at switch-day price (non-EUR funds get a historical `fxRate`, see below) |
 | `COMPRA RV CONTADO SF` / `COMPRA RV CONTADO` (movimientos) | `BUY` (symbol/quantity parsed from concept, EUR unit price derived from amount/quantity) |
 | `VENTA DE VALORES` (movimientos) | `SELL` (symbol/quantity parsed from concept, EUR unit price derived from amount/quantity) |
 | `COMPRA RF VCTO` (movimientos) | `BUY` bond |
@@ -84,8 +84,18 @@ source account's addon, and again here as a `DEPOSIT` from the matching
 duplicate detection won't catch this, since `DEPOSIT` and `TRANSFER_IN` hash
 to different idempotency keys. Before importing, this addon checks your
 MyInvestor account for an existing `TRANSFER_IN` of the same amount within a
-day of the transfer date; if one is found, the `DEPOSIT` is skipped (listed
-under "Unsupported" for review) instead of double-counting the money.
+day of the transfer date; if one is found, the `DEPOSIT` is skipped and
+listed in its own **Duplicates** tab for review, instead of double-counting
+the money.
+
+Import order between the two addons isn't controlled by either one, so this
+only prevents *new* duplicates going forward — if a `DEPOSIT` was already
+created by an earlier import that ran before the matching `TRANSFER_IN`
+existed, there was nothing to catch it at the time. Every import re-scans the
+full movimientos history, though, so once both activities exist, that's
+detected too and flagged (with both activity ids) as a confirmed duplicate
+for you to delete manually — the addon has no way to delete activities
+itself.
 
 ## Fund switches (traspasos) are recorded as SELL + BUY
 
@@ -113,22 +123,47 @@ switch-day price. The trade-off: each switch now shows as a real (though
 non-taxable-in-Spain) realized gain/loss in Wealthfolio's performance/tax
 reports.
 
+### Non-EUR fund switches
+
+A traspaso never touches movimientos, so unlike `SUSCRIPCION`/`REEMBOLSO`
+(which derive their `fxRate` from a matched cash amount — see "USD-denominated
+funds" below) there's no cash movement to derive a conversion rate from for a
+non-EUR-denominated switch. Before transforming, the addon collects every
+unique (currency, settlement date) pair among non-EUR switches and looks up a
+historical rate via Wealthfolio's `exchangeRates.getRatesForDates` API, keyed
+by the fund's **settlement date**, not its order date — real accounts can
+settle a switch up to a week after it's ordered, and EUR/USD can move enough
+in that window to matter. When no rate can be found (API error, or no data
+for that currency/date), the switch still imports, just at the native price
+with no `fxRate` — and it's flagged in an **FX rate warnings** tab so you
+know that leg wasn't reconciled against a real historical rate.
+
+This doesn't make cash reconciliation exact for non-EUR switches, and can't:
+a fetched market rate is still an approximation of Inversis' own internal
+conversion for that specific trade, not a byte-perfect match.
+
 ## Two movimientos export shapes
 
 Inversis has exposed at least two different versions of the cuenta corriente
-export:
+export, both auto-detected and imported correctly:
 
-- A 6-column shape where each fund-trade row's concept includes the share
-  count (e.g. `"...FUND EUR @ 0.504"`) — this lets a `SUSCRIPCION`/`REEMBOLSO`
-  be matched exactly to its cash movement, deriving a EUR-precise unit price.
-- The 7-column shape most current MyInvestor accounts actually produce
-  (confirmed against real exports), which never includes that share count.
+- A 6-column shape whose fund-trade concept text includes the share count
+  (e.g. `"...FUND EUR @ 0.504"`).
+- A 7-column shape that usually omits it — though on at least one real
+  multi-year account, some rows carried it and others didn't, varying row by
+  row rather than being a fixed property of the account or export version.
 
-Both are auto-detected and imported correctly, but only the first lets fund
-buys/sells be reconciled to the exact EUR cash debited. With the second, every
-fund `BUY`/`SELL` still imports — just at MyInvestor's stated price instead of
-one derived from the real cash amount (same trade-off as the fondos-only case
-below).
+For each `SUSCRIPCION`/`REEMBOLSO` fondos row, the addon first tries to match
+it to a cash movement by exact share count. When that's not available (or
+doesn't line up with anything), it falls back to matching by fund-name
+similarity — scoring how many whole words the two exports' fund names have in
+common, since the two screens don't always spell the same fund the same way
+(confirmed real example: fondos' `"MSCI JAPAN INDEX P ACC EUR"` vs
+movimientos' `"FIDELITY MSCI JAPAN INDEX P AC"` for the identical fund). A
+match by either method reconciles the trade to the exact EUR cash debited,
+deriving a EUR-precise unit price; a row with no confident match either way
+still imports as `BUY`/`SELL`, just at MyInvestor's stated price instead
+(same trade-off as the fondos-only case below).
 
 ## USD-denominated funds
 
