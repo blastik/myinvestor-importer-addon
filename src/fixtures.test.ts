@@ -62,8 +62,8 @@ describe("real-export fixtures", () => {
     const fondos = parseMyInvestorHtml(fondosHtml);
     const movimientos = parseMyInvestorHtml(movimientosHtml);
     if (fondos.kind !== "fondos" || movimientos.kind !== "movimientos") throw new Error("wrong kind");
-    expect(fondos.rows).toHaveLength(9);
-    expect(movimientos.rows).toHaveLength(27);
+    expect(fondos.rows).toHaveLength(10);
+    expect(movimientos.rows).toHaveLength(29);
   });
 
   describe("end-to-end transform", () => {
@@ -73,23 +73,26 @@ describe("real-export fixtures", () => {
     const { activities, skipped, fxRateWarnings } = transform(fondos.rows, movimientos.rows, CONFIG);
 
     it("produces the expected total activity/skip counts", () => {
-      // 8 fund BUY/SELL (2 matched EUR/USD SUSCRIPCION/REEMBOLSO, both
+      // 9 fund BUY/SELL (2 matched EUR/USD SUSCRIPCION/REEMBOLSO, both
       // matched by fund name since this movimientos shape carries no share
-      // count + 2 identical same-day traspaso-in fragments + 1 traspaso-out
-      // + ALTA/BAJA IIC SWITCH pair — traspasos never had a cash
-      // counterpart to match in the first place) + 5 direct securities
-      // BUY/SELL from movimientos alone (2 stock buys, 1 stock sell, 1
-      // Letra del Tesoro buy + its amortizacion) + 1 DIVIDEND + 16 cash
-      // activities (5 FEE — including the dividend-reversal FEE/REVERSAL —
-      // 1 INTEREST, 1 TAX, 1 CREDIT, 3 DEPOSIT, 5 WITHDRAWAL).
-      expect(activities).toHaveLength(30);
+      // count + 1 SUSCRIPCION matched by fund name despite the two exports
+      // wording the fund differently, disambiguated from a same-day decoy
+      // by word-overlap score (see "picks the higher-scoring..." below) + 2
+      // identical same-day traspaso-in fragments + 1 traspaso-out + ALTA/BAJA
+      // IIC SWITCH pair — traspasos never had a cash counterpart to match in
+      // the first place) + 5 direct securities BUY/SELL from movimientos
+      // alone (2 stock buys, 1 stock sell, 1 Letra del Tesoro buy + its
+      // amortizacion) + 1 DIVIDEND + 16 cash activities (5 FEE — including
+      // the dividend-reversal FEE/REVERSAL — 1 INTEREST, 1 TAX, 1 CREDIT, 3
+      // DEPOSIT, 5 WITHDRAWAL).
+      expect(activities).toHaveLength(31);
       // APERTURA + a genuinely-unmatched fondos SUSCRIPCION (SAMPLE EMERGING
       // MARKETS — no counterpart in this movimientos export at all, by
-      // shares or by name) + a genuinely-unmatched movimientos SUSCRIPCION
-      // IIC (SAMPLE BOND FUND — no counterpart in fondos either). The two
-      // fund pairs that DO have a real counterpart now join by fund name
-      // instead of being left unlinked.
-      expect(skipped).toHaveLength(3);
+      // shares or by name) + two genuinely-unmatched movimientos SUSCRIPCION
+      // IIC rows (SAMPLE BOND FUND, and the decoy SAMPLE EUROPE BOND FUND —
+      // no counterpart in fondos either). The fund pairs that DO have a real
+      // counterpart now join by fund name instead of being left unlinked.
+      expect(skipped).toHaveLength(4);
     });
 
     it("warns (but still books at native price) for the fixture's USD ALTA IIC SWITCH when no fxRates are supplied", () => {
@@ -129,11 +132,32 @@ describe("real-export fixtures", () => {
       expect(parseFloat(String(buy?.fxRate))).toBeCloseTo(230.5 / (10 * 25), 3);
     });
 
-    it("still flags a movimientos SUSCRIPCION IIC row with no real fondos counterpart, without blocking the matched ones above", () => {
+    it("picks the higher-scoring fund-name match over a same-day decoy sharing fewer words", () => {
+      // IE00SAMPLE04's fondos nombre is "SAMPLE JAPAN INDEX FUND EUR"; its
+      // real movimientos counterpart words it differently ("BRANDX SAMPLE
+      // JAPAN INDEX FD" — brand prefix + abbreviation, mirroring a real
+      // account's fondos/movimientos wording mismatch), sharing 3 words. A
+      // decoy "SAMPLE EUROPE BOND FUND" row lands on the very same
+      // tipo+date and shares 2 words with the same nombre — enough to be a
+      // real candidate, but not the best one.
+      const buy = activities.find((a) => a.symbol === "IE00SAMPLE04");
+      expect(buy).toBeDefined();
+      expect(buy?.activityType).toBe("BUY");
+      // Real cash debit was 44.85, not MyInvestor's stated "Precio Neto"
+      // (15.0000000) — proves the match resolved to the real counterpart,
+      // not the decoy (which would derive a different price entirely).
+      expect(parseFloat(String(buy?.unitPrice))).toBeCloseTo(44.85 / 3, 6);
+      // The decoy itself is correctly left unmatched, not silently paired
+      // with some other fondos row.
+      const decoySkip = skipped.find((s) => s.description === "SAMPLE EUROPE BOND FUND");
+      expect(decoySkip?.reason).toMatch(/no matching fund detail/i);
+    });
+
+    it("still flags movimientos SUSCRIPCION IIC rows with no real fondos counterpart, without blocking the matched ones above", () => {
       const movSkips = skipped.filter((s) => s.source === "movimientos" && s.type !== "APERTURA");
-      expect(movSkips).toHaveLength(1);
-      expect(movSkips[0].description).toBe("SAMPLE BOND FUND EUR");
-      expect(movSkips[0].reason).toMatch(/no matching fund detail/i);
+      expect(movSkips).toHaveLength(2);
+      expect(movSkips.map((s) => s.description).sort()).toEqual(["SAMPLE BOND FUND EUR", "SAMPLE EUROPE BOND FUND"]);
+      expect(movSkips.every((s) => s.reason.match(/no matching fund detail/i))).toBe(true);
       // The one fondos-side row with no real movimientos counterpart either
       // (SAMPLE EMERGING MARKETS) is flagged too now that matching actually
       // works for this shape — a real mismatch is worth surfacing rather

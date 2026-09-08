@@ -151,6 +151,20 @@
 		<td x:num="10.5000000">10.5000000</td>
 		<td x:num="42.00">42.00</td>
 	  </tr>
+
+	  <tr>
+		<td align="center">2026-07-01&nbsp;</td>
+		<td align="center">2026-07-03&nbsp;</td>
+		<td> 300000010</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>SUSCRIPCION</td>
+		<td>IE00SAMPLE04</td>
+		<td>SAMPLE JAPAN INDEX FUND EUR</td>
+		<td x:num="3.00000000">3.00000000</td>
+		<td>EUR</td>
+		<td x:num="15.0000000">15.0000000</td>
+		<td x:num="45.00">45.00</td>
+	  </tr>
     </table>
 </body>
 </html>

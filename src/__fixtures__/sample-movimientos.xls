@@ -139,6 +139,26 @@ var separadorDecimales = ',';
 	</tr>
 
     <tr>
+	 <td align="center">01/07/2026&nbsp;</td>
+	 <td align="center">03/07/2026&nbsp;</td>
+	 <td>SUSCRIPCION IIC</td>
+	 <td>BRANDX SAMPLE JAPAN INDEX FD</td>
+	 <td>C</td>
+	 <td>-44,85</td>
+	 <td>99.855,62</td>
+	</tr>
+
+    <tr>
+	 <td align="center">01/07/2026&nbsp;</td>
+	 <td align="center">03/07/2026&nbsp;</td>
+	 <td>SUSCRIPCION IIC</td>
+	 <td>SAMPLE EUROPE BOND FUND</td>
+	 <td>C</td>
+	 <td>-30,00</td>
+	 <td>99.825,62</td>
+	</tr>
+
+    <tr>
 	 <td align="center">05/07/2026&nbsp;</td>
 	 <td align="center">05/07/2026&nbsp;</td>
 	 <td>COMISION GESTION CARTERA OF</td>
