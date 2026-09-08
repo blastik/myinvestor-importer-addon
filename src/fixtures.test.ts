@@ -106,7 +106,8 @@ describe("real-export fixtures", () => {
     });
 
     it("applies a resolved historical fxRate to that same USD ALTA IIC SWITCH row when supplied", () => {
-      const fxRates = { [fxRateKey("USD", "2026-06-01")]: 0.87 };
+      // Keyed by fechaLiquidacion (2026-06-03), not fechaOperacion (2026-06-01).
+      const fxRates = { [fxRateKey("USD", "2026-06-03")]: 0.87 };
       const result = transform(fondos.rows, movimientos.rows, CONFIG, [], [], fxRates);
       expect(result.fxRateWarnings).toHaveLength(0);
       const alta = result.activities.find((a) => a.symbol === "IE00SAMPLE03" && a.quantity === "2.00000000");

@@ -211,7 +211,8 @@ describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by con
     const fondos = fondosRow({
       operacion: "ALTA IIC SWITCH",
       divisa: "USD",
-      fechaOperacion: "2026-03-10",
+      fechaOperacion: "2026-03-08",
+      fechaLiquidacion: "2026-03-10",
     });
     const fxRates = { [fxRateKey("USD", "2026-03-10")]: 0.9 };
     const { activities, fxRateWarnings } = transform([fondos], [], CONFIG, [], [], fxRates);
@@ -227,7 +228,8 @@ describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by con
     const fondos = fondosRow({
       operacion: "BAJA IIC SWITCH",
       divisa: "USD",
-      fechaOperacion: "2026-03-11",
+      fechaOperacion: "2026-03-09",
+      fechaLiquidacion: "2026-03-11",
     });
     const fxRates = { [fxRateKey("USD", "2026-03-11")]: 0.91 };
     const { activities } = transform([fondos], [], CONFIG, [], [], fxRates);
@@ -239,7 +241,8 @@ describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by con
     const fondos = fondosRow({
       operacion: "SUSCR.POR TRASPASO I",
       divisa: "USD",
-      fechaOperacion: "2026-03-12",
+      fechaOperacion: "2026-03-10",
+      fechaLiquidacion: "2026-03-12",
     });
     // No matching entry in fxRates at all — e.g. the host lookup failed or had no data for this date.
     const { activities, fxRateWarnings } = transform([fondos], [], CONFIG, [], [], {});
@@ -248,10 +251,17 @@ describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by con
     expect(activities[0].unitPrice).toBe(fondos.precio);
     expect(fxRateWarnings).toHaveLength(1);
     expect(fxRateWarnings[0].reason).toMatch(/no historical usd→eur exchange rate/i);
+    // The reason names the settlement date actually looked up, not the order date.
+    expect(fxRateWarnings[0].reason).toContain("2026-03-12");
   });
 
   it("ignores a non-positive or non-finite resolved rate the same as a missing one", () => {
-    const fondos = fondosRow({ operacion: "ALTA IIC SWITCH", divisa: "USD", fechaOperacion: "2026-03-13" });
+    const fondos = fondosRow({
+      operacion: "ALTA IIC SWITCH",
+      divisa: "USD",
+      fechaOperacion: "2026-03-11",
+      fechaLiquidacion: "2026-03-13",
+    });
     for (const badRate of [0, -1, NaN]) {
       const { activities, fxRateWarnings } = transform(
         [fondos],

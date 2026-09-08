@@ -95,7 +95,7 @@ function conceptInstrument(concepto: string): { symbol: string; quantity?: numbe
 
 // Key format shared with ImportPage.tsx: it builds this same key from
 // exchangeRates.getRatesForDates results so transform() can look resolved
-// rates back up per (native currency, operation date).
+// rates back up per (native currency, settlement date — see traspasoFxRate).
 export function fxRateKey(currency: string, date: string): string {
   return `${currency}|${date}`;
 }
@@ -115,20 +115,32 @@ export function isForeignTraspaso(r: FondosRow): boolean {
   );
 }
 
+// Keyed by fechaLiquidacion (settlement), not fechaOperacion (order date) —
+// matching how the SUSCRIPCION/REEMBOLSO branch above already matches cash by
+// settlement date (findCashMatch against movimientos' fechaValor). A switch's
+// actual currency conversion happens when it clears, not when it's ordered,
+// and real MyInvestor data shows those dates diverging by up to a week (e.g.
+// an order on a Friday settling the following Friday) — during which
+// EUR/USD can move enough to matter. Looking the rate up by order date was
+// confirmed to add avoidable drift on top of the inherent approximation
+// (an external historical rate is never exactly Inversis' own internal
+// conversion rate for that trade) when reconciling a real ~2.9-year account:
+// switching to fechaLiquidacion doesn't make the reconciliation exact, but
+// removes this compounding source of error.
 function traspasoFxRate(
   r: FondosRow,
   fxRates: Record<string, number>,
   fxRateWarnings: SkippedRow[],
 ): string | undefined {
   if (r.divisa === "EUR") return undefined;
-  const rate = fxRates[fxRateKey(r.divisa, r.fechaOperacion)];
+  const rate = fxRates[fxRateKey(r.divisa, r.fechaLiquidacion)];
   if (rate != null && Number.isFinite(rate) && rate > 0) return String(rate);
   fxRateWarnings.push({
     date: r.fechaOperacion,
     source: "fondos",
     type: r.operacion,
     description: `${r.nombre} (${r.isin})`,
-    reason: `No historical ${r.divisa}→EUR exchange rate available for ${r.fechaOperacion} — booked at the native switch price with no fxRate; will land in an unfunded ${r.divisa} cash bucket until this is corrected manually`,
+    reason: `No historical ${r.divisa}→EUR exchange rate available for ${r.fechaLiquidacion} (settlement) — booked at the native switch price with no fxRate; will land in an unfunded ${r.divisa} cash bucket until this is corrected manually`,
   });
   return undefined;
 }
