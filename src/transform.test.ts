@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { transform } from "./transform";
+import { fxRateKey, isForeignTraspaso, transform } from "./transform";
 import type { AddonSettings, FondosRow, MovimientosRow } from "./types";
 
 const CONFIG: AddonSettings = {
@@ -167,6 +167,85 @@ describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by con
     expect(activities).toHaveLength(1);
     expect(skipped).toHaveLength(1); // the unrelated movimientos row itself is unmatched
     expect(skipped[0].source).toBe("movimientos");
+  });
+
+  it("EUR switches need no fxRate lookup and never produce a warning", () => {
+    const fondos = fondosRow({ operacion: "ALTA IIC SWITCH", divisa: "EUR" });
+    const { activities, fxRateWarnings } = transform([fondos], [], CONFIG);
+    expect(activities[0].fxRate).toBeUndefined();
+    expect(fxRateWarnings).toHaveLength(0);
+  });
+
+  it("applies a resolved historical fxRate to a non-EUR ALTA IIC SWITCH (incoming leg)", () => {
+    const fondos = fondosRow({
+      operacion: "ALTA IIC SWITCH",
+      divisa: "USD",
+      fechaOperacion: "2026-03-10",
+    });
+    const fxRates = { [fxRateKey("USD", "2026-03-10")]: 0.9 };
+    const { activities, fxRateWarnings } = transform([fondos], [], CONFIG, [], [], fxRates);
+    expect(activities).toHaveLength(1);
+    expect(activities[0].currency).toBe("USD");
+    expect(activities[0].fxRate).toBe("0.9");
+    // unitPrice/quantity stay native — only the fxRate is added.
+    expect(activities[0].unitPrice).toBe(fondos.precio);
+    expect(fxRateWarnings).toHaveLength(0);
+  });
+
+  it("applies a resolved historical fxRate to a non-EUR BAJA IIC SWITCH (outgoing leg)", () => {
+    const fondos = fondosRow({
+      operacion: "BAJA IIC SWITCH",
+      divisa: "USD",
+      fechaOperacion: "2026-03-11",
+    });
+    const fxRates = { [fxRateKey("USD", "2026-03-11")]: 0.91 };
+    const { activities } = transform([fondos], [], CONFIG, [], [], fxRates);
+    expect(activities[0].activityType).toBe("SELL");
+    expect(activities[0].fxRate).toBe("0.91");
+  });
+
+  it("falls back to native-currency booking and warns when no fxRate was resolved for a non-EUR switch", () => {
+    const fondos = fondosRow({
+      operacion: "SUSCR.POR TRASPASO I",
+      divisa: "USD",
+      fechaOperacion: "2026-03-12",
+    });
+    // No matching entry in fxRates at all — e.g. the host lookup failed or had no data for this date.
+    const { activities, fxRateWarnings } = transform([fondos], [], CONFIG, [], [], {});
+    expect(activities).toHaveLength(1);
+    expect(activities[0].fxRate).toBeUndefined();
+    expect(activities[0].unitPrice).toBe(fondos.precio);
+    expect(fxRateWarnings).toHaveLength(1);
+    expect(fxRateWarnings[0].reason).toMatch(/no historical usd→eur exchange rate/i);
+  });
+
+  it("ignores a non-positive or non-finite resolved rate the same as a missing one", () => {
+    const fondos = fondosRow({ operacion: "ALTA IIC SWITCH", divisa: "USD", fechaOperacion: "2026-03-13" });
+    for (const badRate of [0, -1, NaN]) {
+      const { activities, fxRateWarnings } = transform(
+        [fondos],
+        [],
+        CONFIG,
+        [],
+        [],
+        { [fxRateKey("USD", "2026-03-13")]: badRate },
+      );
+      expect(activities[0].fxRate).toBeUndefined();
+      expect(fxRateWarnings).toHaveLength(1);
+    }
+  });
+});
+
+describe("isForeignTraspaso", () => {
+  it("is true only for a non-EUR traspaso/switch operation", () => {
+    expect(isForeignTraspaso(fondosRow({ operacion: "ALTA IIC SWITCH", divisa: "USD" }))).toBe(true);
+    expect(isForeignTraspaso(fondosRow({ operacion: "BAJA IIC SWITCH", divisa: "USD" }))).toBe(true);
+    expect(isForeignTraspaso(fondosRow({ operacion: "SUSCR.POR TRASPASO I", divisa: "USD" }))).toBe(true);
+    expect(isForeignTraspaso(fondosRow({ operacion: "REEMB.POR TRASPASO I", divisa: "USD" }))).toBe(true);
+    // EUR switch — no fx lookup needed.
+    expect(isForeignTraspaso(fondosRow({ operacion: "ALTA IIC SWITCH", divisa: "EUR" }))).toBe(false);
+    // Non-EUR but not a traspaso — SUSCRIPCION/REEMBOLSO derive fxRate from movimientos instead.
+    expect(isForeignTraspaso(fondosRow({ operacion: "SUSCRIPCION", divisa: "USD" }))).toBe(false);
   });
 });
 

@@ -1,2 +1,5 @@
 minimumReleaseAgeExclude:
   - '@types/react-dom@19.2.5'
+  - '@wealthfolio/addon-dev-tools@3.8.0'
+  - '@wealthfolio/addon-sdk@3.8.0'
+  - '@wealthfolio/ui@3.8.0'

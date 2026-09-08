@@ -89,4 +89,12 @@ export interface TransformResult {
   // elsewhere) and reviewing them together buries actionable "delete this"
   // warnings among "this fund type isn't supported yet" noise.
   duplicates: SkippedRow[];
+  // Non-EUR fund-switch (traspaso) legs for which no historical fxRate could
+  // be resolved (host API failure, or no rate data for that currency/date).
+  // The BUY/SELL is still created (native-currency booking, same as before
+  // this addon could look up historical rates at all) — kept separate from
+  // `skipped` because, again, the row IS imported; this only flags that it
+  // landed without a verified EUR conversion and may need a manual fix once
+  // a rate becomes available.
+  fxRateWarnings: SkippedRow[];
 }

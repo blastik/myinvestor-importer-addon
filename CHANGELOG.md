@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.0] - 2026-09-08
+
+### Fixed
+
+- Non-EUR fund switches (traspasos: `SUSCR.POR TRASPASO I` / `ALTA IIC SWITCH` / `REEMB.POR TRASPASO I` / `BAJA IIC SWITCH`) were booked with no `fxRate`, since — unlike `SUSCRIPCION`/`REEMBOLSO` — a traspaso has no movimientos cash counterpart to derive one from. Wealthfolio books an activity with no `fxRate` into its own currency when that differs from the account currency, so every non-EUR switch created a separate, never-funded currency bucket instead of touching the account's real EUR cash (confirmed on a real account: a stray phantom USD balance exactly matching the sum of every USD switch, paired with matching phantom "free" EUR cash on the funding side).
+
+### Added
+
+- `ImportPage.tsx` now batch-resolves a real historical EUR exchange rate for every non-EUR traspaso row via `ctx.api.exchangeRates.getRatesForDates` (added in `@wealthfolio/addon-sdk` 3.8.0 / Wealthfolio 3.8.0, [wealthfolio/wealthfolio#1276](https://github.com/wealthfolio/wealthfolio/pull/1276)) and passes the results into `transform()`, which sets `fxRate` on the matching BUY/SELL. A rate that can't be resolved falls back to the previous native-currency booking and is now surfaced in a new `fxRateWarnings` list (its own "FX rate warnings" tab during import review) instead of silently landing in the wrong currency bucket with no indication.
+- New `currency` permission (`getRatesForDates`) declared in `manifest.json`.
+
+### Changed
+
+- Bumped `minWealthfolioVersion`/`sdkVersion`/host dependency ranges to 3.8.0 (required for `exchangeRates.getRatesForDates`).
+
 ## [1.1.0] - 2026-08-31
 
 ### Added
