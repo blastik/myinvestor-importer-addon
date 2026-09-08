@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Window } from "happy-dom";
 import { describe, expect, it } from "vitest";
 import { parseMyInvestorHtml } from "./parseFiles";
-import { transform } from "./transform";
+import { fxRateKey, transform } from "./transform";
 import type { AddonSettings } from "./types";
 
 // parseFiles.ts relies on a global DOMParser (as it would get for free in the
@@ -60,7 +60,7 @@ describe("real-export fixtures", () => {
     const fondos = parseMyInvestorHtml(fondosHtml);
     const movimientos = parseMyInvestorHtml(movimientosHtml);
     if (fondos.kind !== "fondos" || movimientos.kind !== "movimientos") throw new Error("wrong kind");
-    const { activities, skipped } = transform(fondos.rows, movimientos.rows, CONFIG);
+    const { activities, skipped, fxRateWarnings } = transform(fondos.rows, movimientos.rows, CONFIG);
 
     it("produces the expected total activity/skip counts", () => {
       // 8 fund BUY/SELL (2 matched + 2 identical same-day traspaso-in
@@ -72,6 +72,24 @@ describe("real-export fixtures", () => {
       expect(activities).toHaveLength(30);
       // 1 unmatched fondos SUSCRIPCION + 1 unmatched movimientos SUSCRIPCION IIC + 1 APERTURA.
       expect(skipped).toHaveLength(3);
+    });
+
+    it("warns (but still books at native price) for the fixture's USD ALTA IIC SWITCH when no fxRates are supplied", () => {
+      // No fxRates passed above, matching how a lookup failure/no-data
+      // response degrades — the activity itself is unaffected.
+      expect(fxRateWarnings).toHaveLength(1);
+      expect(fxRateWarnings[0].reason).toMatch(/no historical usd→eur exchange rate/i);
+      const alta = activities.find((a) => a.symbol === "IE00SAMPLE03" && a.quantity === "2.00000000");
+      expect(alta?.fxRate).toBeUndefined();
+      expect(alta?.currency).toBe("USD");
+    });
+
+    it("applies a resolved historical fxRate to that same USD ALTA IIC SWITCH row when supplied", () => {
+      const fxRates = { [fxRateKey("USD", "2026-06-01")]: 0.87 };
+      const result = transform(fondos.rows, movimientos.rows, CONFIG, [], [], fxRates);
+      expect(result.fxRateWarnings).toHaveLength(0);
+      const alta = result.activities.find((a) => a.symbol === "IE00SAMPLE03" && a.quantity === "2.00000000");
+      expect(alta?.fxRate).toBe("0.87");
     });
 
     it("merges the matched EUR SUSCRIPCION and derives unitPrice from the real cash debit", () => {

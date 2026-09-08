@@ -1,16 +1,16 @@
 {
   "id": "myinvestor-importer",
   "name": "MyInvestor Importer",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Import MyInvestor and Inversis account exports into Wealthfolio. Merges the cuenta corriente and fondos exports into buy/sell/switch/cash activities on a single account.",
   "author": "blastik",
   "main": "dist/addon.js",
-  "sdkVersion": "3.7.0",
-  "minWealthfolioVersion": "3.6.0",
+  "sdkVersion": "3.8.0",
+  "minWealthfolioVersion": "3.8.0",
   "enabled": true,
   "hostDependencies": {
-    "@wealthfolio/addon-sdk": "^3.6.0",
-    "@wealthfolio/ui": "^3.6.0",
+    "@wealthfolio/addon-sdk": "^3.8.0",
+    "@wealthfolio/ui": "^3.8.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
@@ -67,6 +67,11 @@
       "category": "market-data",
       "functions": [{ "name": "searchTicker", "isDeclared": true, "isDetected": false }],
       "purpose": "Search for securities when mapping unrecognised funds"
+    },
+    {
+      "category": "currency",
+      "functions": [{ "name": "getRatesForDates", "isDeclared": true, "isDetected": false }],
+      "purpose": "Look up historical EUR exchange rates for non-EUR fund switches (traspasos), so their cash impact books into the account's real EUR balance instead of an unfunded foreign-currency bucket"
     }
   ],
   "keywords": ["myinvestor", "inversis", "importer"],

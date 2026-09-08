@@ -5,6 +5,7 @@ import type {
   ActivityImport,
   ActivityUpdate,
   AddonContext,
+  ExchangeRateDateQuery,
   ImportActivitiesResult,
 } from "@wealthfolio/addon-sdk";
 import {
@@ -22,7 +23,7 @@ import { loadSettings, saveSettings } from "./settings";
 import { parseMyInvestorHtml, readMyInvestorFile } from "./parseFiles";
 import { SecurityMappingStep } from "./SecurityMappingStep";
 import type { SecurityInfo, SecurityMapping } from "./SecurityMappingStep";
-import { transform } from "./transform";
+import { fxRateKey, isForeignTraspaso, transform } from "./transform";
 import type {
   AddonSettings,
   ExistingCashTransferIn,
@@ -347,7 +348,38 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
         // non-critical — proceed without cross-addon dedup
       }
 
-      const result = transform(fondos, movimientos, settings, existingCashTransfersIn, existingDeposits);
+      // Non-EUR fund switches (traspasos) need a real historical exchange
+      // rate to book their EUR cash impact correctly — without it Wealthfolio
+      // creates a separate, never-funded currency bucket for the activity's
+      // own currency (see fxRateKey/isForeignTraspaso in transform.ts). Batch
+      // every unique (currency, date) pair into one lookup; best-effort, same
+      // as the dedup fetch above — a failure here just means transform()
+      // falls back to native-currency booking and surfaces a warning per row.
+      let fxRates: Record<string, number> = {};
+      try {
+        const pairs = new Map<string, ExchangeRateDateQuery>();
+        for (const r of fondos) {
+          if (isForeignTraspaso(r)) {
+            pairs.set(fxRateKey(r.divisa, r.fechaOperacion), {
+              fromCurrency: r.divisa,
+              toCurrency: "EUR",
+              date: r.fechaOperacion,
+            });
+          }
+        }
+        if (pairs.size > 0) {
+          const results = await ctx.api.exchangeRates.getRatesForDates([...pairs.values()]);
+          fxRates = Object.fromEntries(
+            results
+              .filter((r) => r.rate != null)
+              .map((r) => [fxRateKey(r.fromCurrency, r.date), r.rate as number]),
+          );
+        }
+      } catch {
+        // non-critical — transform() falls back to native-currency booking
+      }
+
+      const result = transform(fondos, movimientos, settings, existingCashTransfersIn, existingDeposits, fxRates);
       setParseResult(result);
       setChecked(null);
       setExcludedLines(new Set());
@@ -663,6 +695,8 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
                 {parseResult.skipped.length > 0 && ` · ${parseResult.skipped.length} skipped`}
                 {parseResult.duplicates.length > 0 &&
                   ` · ${parseResult.duplicates.length} cross-addon duplicates`}
+                {parseResult.fxRateWarnings.length > 0 &&
+                  ` · ${parseResult.fxRateWarnings.length} fx rate warnings`}
               </p>
             )}
             <div className="flex gap-2">
@@ -733,6 +767,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
     const toImportCount = valid.length + duplicates.length - userExcludedCount;
     const unsupported = parseResult?.skipped ?? [];
     const crossAddonDuplicates = parseResult?.duplicates ?? [];
+    const fxRateWarnings = parseResult?.fxRateWarnings ?? [];
 
     const visibleActivities = showDuplicatesOnly
       ? checked.filter((a) => activityStatus(a) === "duplicate")
@@ -748,6 +783,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
               {unsupported.length > 0 && ` · ${unsupported.length} unsupported`}
               {crossAddonDuplicates.length > 0 &&
                 ` · ${crossAddonDuplicates.length} cross-addon duplicates`}
+              {fxRateWarnings.length > 0 && ` · ${fxRateWarnings.length} fx rate warnings`}
             </p>
             {checkError && (
               <p className="text-destructive mt-1 text-xs">
@@ -798,6 +834,11 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
                     </TabsTrigger>
                   )}
                   <TabsTrigger value="unsupported">Unsupported ({unsupported.length})</TabsTrigger>
+                  {fxRateWarnings.length > 0 && (
+                    <TabsTrigger value="fx-rate-warnings">
+                      FX rate warnings ({fxRateWarnings.length})
+                    </TabsTrigger>
+                  )}
                 </TabsList>
                 {duplicates.length > 0 && (
                   <button
@@ -856,6 +897,12 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
               <TabsContent value="unsupported" className="mt-0">
                 <SkippedTable rows={unsupported} />
               </TabsContent>
+
+              {fxRateWarnings.length > 0 && (
+                <TabsContent value="fx-rate-warnings" className="mt-0">
+                  <SkippedTable rows={fxRateWarnings} />
+                </TabsContent>
+              )}
             </Tabs>
           </CardContent>
         </Card>

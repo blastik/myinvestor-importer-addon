@@ -93,6 +93,46 @@ function conceptInstrument(concepto: string): { symbol: string; quantity?: numbe
   };
 }
 
+// Key format shared with ImportPage.tsx: it builds this same key from
+// exchangeRates.getRatesForDates results so transform() can look resolved
+// rates back up per (native currency, operation date).
+export function fxRateKey(currency: string, date: string): string {
+  return `${currency}|${date}`;
+}
+
+// Fund switches (traspasos) settle at the fund's native price with no
+// movimientos cash counterpart to derive a real EUR rate from (see
+// SUSCRIPCION/REEMBOLSO above, which does have one). A non-EUR switch needs
+// a real EUR/native historical rate instead, looked up by the caller via
+// ctx.api.exchangeRates.getRatesForDates and passed in as `fxRates`.
+export function isForeignTraspaso(r: FondosRow): boolean {
+  return (
+    r.divisa !== "EUR" &&
+    (r.operacion === "SUSCR.POR TRASPASO I" ||
+      r.operacion === "ALTA IIC SWITCH" ||
+      r.operacion === "REEMB.POR TRASPASO I" ||
+      r.operacion === "BAJA IIC SWITCH")
+  );
+}
+
+function traspasoFxRate(
+  r: FondosRow,
+  fxRates: Record<string, number>,
+  fxRateWarnings: SkippedRow[],
+): string | undefined {
+  if (r.divisa === "EUR") return undefined;
+  const rate = fxRates[fxRateKey(r.divisa, r.fechaOperacion)];
+  if (rate != null && Number.isFinite(rate) && rate > 0) return String(rate);
+  fxRateWarnings.push({
+    date: r.fechaOperacion,
+    source: "fondos",
+    type: r.operacion,
+    description: `${r.nombre} (${r.isin})`,
+    reason: `No historical ${r.divisa}→EUR exchange rate available for ${r.fechaOperacion} — booked at the native switch price with no fxRate; will land in an unfunded ${r.divisa} cash bucket until this is corrected manually`,
+  });
+  return undefined;
+}
+
 function findCashMatch(
   pool: { row: MovimientosRow; index: number; consumed: boolean }[],
   expectedTipo: string,
@@ -121,11 +161,13 @@ export function transform(
   config: AddonSettings,
   existingCashTransfersIn: ExistingCashTransferIn[] = [],
   existingDeposits: ExistingDeposit[] = [],
+  fxRates: Record<string, number> = {},
 ): TransformResult {
   const { accountId } = config;
   const drafts: Draft[] = [];
   const skipped: SkippedRow[] = [];
   const duplicates: SkippedRow[] = [];
+  const fxRateWarnings: SkippedRow[] = [];
 
   const cashPool = movimientosRows.map((row, index) => ({ row, index, consumed: false }));
 
@@ -216,6 +258,13 @@ export function transform(
     // only option that's both accurate and simple. Trade-off: each switch
     // shows as a realized gain/loss in performance/tax reports even though
     // it's not a taxable event in Spain (traspasos are tax-deferred there).
+    //
+    // A non-EUR switch (traspasoFxRate above) additionally needs an explicit
+    // fxRate — same reasoning as the SUSCRIPCION/REEMBOLSO branch, but there
+    // the rate comes from a real historical lookup instead of a matched cash
+    // amount, since a traspaso never touches movimientos. Without it,
+    // Wealthfolio books cash into a separate, never-funded currency bucket
+    // instead of the account's real EUR cash.
     if (r.operacion === "SUSCR.POR TRASPASO I" || r.operacion === "ALTA IIC SWITCH") {
       drafts.push({
         day: r.fechaOperacion,
@@ -231,6 +280,7 @@ export function transform(
           unitPrice: r.precio,
           fee: "0",
           currency: r.divisa,
+          fxRate: traspasoFxRate(r, fxRates, fxRateWarnings),
           comment: `${r.nombre} - fund switch (traspaso) in`,
           isValid: true,
           isDraft: false,
@@ -254,6 +304,7 @@ export function transform(
           unitPrice: r.precio,
           fee: "0",
           currency: r.divisa,
+          fxRate: traspasoFxRate(r, fxRates, fxRateWarnings),
           comment: `${r.nombre} - fund switch (traspaso) out`,
           isValid: true,
           isDraft: false,
@@ -531,5 +582,5 @@ export function transform(
     a.lineNumber = i + 1;
   });
 
-  return { activities, skipped, duplicates };
+  return { activities, skipped, duplicates, fxRateWarnings };
 }
