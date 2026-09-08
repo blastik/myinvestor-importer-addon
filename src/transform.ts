@@ -133,6 +133,32 @@ function traspasoFxRate(
   return undefined;
 }
 
+// How many whole words fondos' `nombre` and movimientos' `concepto` have in
+// common (case-insensitive). The two export screens name the same fund
+// differently — confirmed against a real account: fondos' "MSCI JAPAN INDEX
+// P ACC EUR" vs movimientos' "FIDELITY MSCI JAPAN INDEX P AC" for the same
+// real fund, where movimientos adds a brand prefix and abbreviates "ACC" to
+// "AC" — so neither a `startsWith` nor an exact match is reliable; counting
+// shared words tolerates that while still telling genuinely different funds
+// apart (e.g. "ISHARES EMERGING..." vs "ISHARES DEVELOPED..." only share
+// the brand word, scoring far lower than a true match).
+function wordOverlapScore(nombre: string, concepto: string): number {
+  const nombreWords = nombre.toUpperCase().split(/\s+/).filter(Boolean);
+  const conceptoWords = new Set(concepto.toUpperCase().split(/\s+/).filter(Boolean));
+  return nombreWords.filter((w) => conceptoWords.has(w)).length;
+}
+
+// A real MyInvestor account's movimientos history is not always homogeneous
+// on this point: confirmed against a real multi-year account that some
+// SUSCRIPCION IIC/REEMBOLSO IIC rows carry a share-count suffix in Concepto
+// ("... EUR @ 12.6") and others from the very same export/account don't
+// ("... EUR" with nothing after it, or no "@" at all) — this can vary
+// row-by-row within one account's history, not just across different
+// accounts/screen versions. So matching tries the precise share-count join
+// first, per row, and only falls back to fund-name similarity (see
+// wordOverlapScore) when no share count is available or none lines up —
+// rather than a dataset-wide switch that would give up on shares entirely
+// just because one row happened to lack them.
 function findCashMatch(
   pool: { row: MovimientosRow; index: number; consumed: boolean }[],
   expectedTipo: string,
@@ -140,19 +166,34 @@ function findCashMatch(
   titulos: number,
   nombre: string,
 ): { row: MovimientosRow; index: number; consumed: boolean } | undefined {
-  const candidates = pool.filter(
-    (p) =>
-      !p.consumed &&
-      p.row.tipo === expectedTipo &&
-      p.row.fechaValor === fechaLiquidacion &&
-      Math.abs((conceptShares(p.row.concepto) ?? NaN) - titulos) < 0.001,
+  const sameTipoDate = pool.filter(
+    (p) => !p.consumed && p.row.tipo === expectedTipo && p.row.fechaValor === fechaLiquidacion,
   );
-  if (candidates.length === 0) return undefined;
-  if (candidates.length === 1) return candidates[0];
-  // Disambiguate same-day/same-share-count coincidences by fund name prefix.
-  const namePrefix = nombre.split(" ")[0]?.toUpperCase() ?? "";
-  const byName = candidates.find((c) => c.row.concepto.toUpperCase().startsWith(namePrefix));
-  return byName ?? candidates[0];
+  if (sameTipoDate.length === 0) return undefined;
+
+  const shareMatches = sameTipoDate.filter(
+    (p) => Math.abs((conceptShares(p.row.concepto) ?? NaN) - titulos) < 0.001,
+  );
+  if (shareMatches.length === 1) return shareMatches[0];
+  if (shareMatches.length > 1) {
+    // Disambiguate same-day/same-share-count coincidences by the closest
+    // fund-name match — share count already agrees, so this is just a
+    // tie-break, not the primary signal.
+    return shareMatches.reduce((best, c) =>
+      wordOverlapScore(nombre, c.row.concepto) > wordOverlapScore(nombre, best.row.concepto) ? c : best,
+    );
+  }
+
+  // No share-count match at all — fall back to fund-name similarity alone,
+  // still scoped to the same tipo+date. Require an unambiguous, non-zero
+  // winner: a lone candidate that shares no words with `nombre` (a
+  // coincidental different fund settling the same day) is correctly left
+  // unmatched rather than guessed.
+  const scored = sameTipoDate.map((c) => ({ c, score: wordOverlapScore(nombre, c.row.concepto) }));
+  const maxScore = Math.max(...scored.map((s) => s.score));
+  if (maxScore === 0) return undefined;
+  const winners = scored.filter((s) => s.score === maxScore);
+  return winners.length === 1 ? winners[0].c : undefined;
 }
 
 export function transform(
@@ -208,7 +249,8 @@ export function transform(
         }
       } else if (movimientosRows.length > 0) {
         // The movimientos file was provided but has no counterpart for this
-        // row — a real data mismatch, surface it instead of guessing.
+        // row (by share count or, failing that, fund name) — a real data
+        // mismatch, surface it instead of guessing.
         skipped.push({
           date: r.fechaOperacion,
           source: "fondos",

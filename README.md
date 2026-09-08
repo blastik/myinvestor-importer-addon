@@ -7,9 +7,12 @@ A Wealthfolio addon that imports MyInvestor and Inversis account exports into yo
 Getting the full picture requires **two exports** from inversis.com, because
 neither one alone has everything:
 
-- **Movimientos** (`Cuenta > Corriente > Operaciones y consultas > Movimientos`) —
+- **Movimientos** (`Cuenta > Corriente > Operaciones y consultas > Consulta de operaciones`) —
   the EUR cash ledger: deposits, fees, interest, and the EUR cash side of
-  every real fund buy/sell.
+  every real fund buy/sell. Two export shapes are auto-detected — a 6-column
+  one that lets fund buys/sells be precisely tied to their cash movement, and
+  the 7-column one most current MyInvestor accounts actually produce, which
+  can't be (see below).
 - **Consulta de operaciones** (`Inversiones > Fondos > Operaciones y consultas > Consulta de operaciones`) —
   fund-level detail (ISIN, quantity, native-currency price) for every fund
   movement, including tax-free fund switches (*traspasos*) that never touch
@@ -17,6 +20,13 @@ neither one alone has everything:
 
 Both exports are HTML tables saved with an `.xls` extension — the addon reads
 them directly, no conversion needed.
+
+**Scope note:** this addon targets your MyInvestor/Inversis **securities/investment
+account** only. If your bank also has a separate personal current/checking
+account (BIZUM, card purchases, loan payments, no fund activity), importing
+that into the same Wealthfolio account isn't supported yet — it would need a
+Trade Republic–style two-account (cash + securities) mapping, which doesn't
+exist here.
 
 ## Setup
 
@@ -26,16 +36,18 @@ them directly, no conversion needed.
    - In Wealthfolio, go to **Settings → Add-ons**, click **Install from File**, and
      select the downloaded zip
 2. Go to **MyInvestor → Settings**
-3. Select your **MyInvestor/Inversis account**
+3. Select your **MyInvestor/Inversis securities/investment account** — the one that holds your
+   funds, not a separate cash/checking account
 
 ## Importing
 
-1. Export both files from inversis.com (see above)
-2. Go to **MyInvestor → Import**
-3. Drop or select both files (any order — they're auto-detected)
-4. Review the parsed activities — duplicates are detected automatically
-5. Map any unrecognised funds to their correct ticker (Security Mapping step)
-6. Click **Import**
+1. Go to **MyInvestor → Import**
+2. Export and drop each file into its own box — you can drop more than one
+   file per box (e.g. one export per month)
+3. Click **Continue**, then review the parsed activities — duplicates are
+   detected automatically
+4. Map any unrecognised funds to their correct ticker (Security Mapping step)
+5. Click **Import**
 
 You can import with just one file if you don't have the other, but you'll get
 a smaller/less accurate picture — see below.
@@ -44,7 +56,7 @@ a smaller/less accurate picture — see below.
 
 | Source rows | Wealthfolio activity |
 | --- | --- |
-| `SUSCRIPCION` (fondos) + `SUSCRIPCION IIC` (movimientos), joined by settlement date + share count | `BUY` |
+| `SUSCRIPCION` (fondos) + `SUSCRIPCION IIC` (movimientos), joined by settlement date + share count when the movimientos export includes one (see "Two movimientos export shapes" below) | `BUY` |
 | `REEMBOLSO` (fondos) + `REEMBOLSO IIC` (movimientos) | `SELL` |
 | `SUSCR.POR TRASPASO I` / `ALTA IIC SWITCH` (fondos only — no cash impact) | `BUY` at switch-day price |
 | `REEMB.POR TRASPASO I` / `BAJA IIC SWITCH` (fondos only — no cash impact) | `SELL` at switch-day price |
@@ -100,6 +112,23 @@ are now recorded as an ordinary `SELL` (old fund) + `BUY` (new fund) at the
 switch-day price. The trade-off: each switch now shows as a real (though
 non-taxable-in-Spain) realized gain/loss in Wealthfolio's performance/tax
 reports.
+
+## Two movimientos export shapes
+
+Inversis has exposed at least two different versions of the cuenta corriente
+export:
+
+- A 6-column shape where each fund-trade row's concept includes the share
+  count (e.g. `"...FUND EUR @ 0.504"`) — this lets a `SUSCRIPCION`/`REEMBOLSO`
+  be matched exactly to its cash movement, deriving a EUR-precise unit price.
+- The 7-column shape most current MyInvestor accounts actually produce
+  (confirmed against real exports), which never includes that share count.
+
+Both are auto-detected and imported correctly, but only the first lets fund
+buys/sells be reconciled to the exact EUR cash debited. With the second, every
+fund `BUY`/`SELL` still imports — just at MyInvestor's stated price instead of
+one derived from the real cash amount (same trade-off as the fondos-only case
+below).
 
 ## USD-denominated funds
 

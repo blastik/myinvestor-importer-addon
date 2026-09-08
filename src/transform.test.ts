@@ -102,6 +102,37 @@ describe("SUSCRIPCION / REEMBOLSO (matched buy/sell)", () => {
     expect(skipped.find((s) => s.source === "movimientos")?.reason).toMatch(/no matching fund detail/i);
   });
 
+  it("matches by fund name (still deriving the exact EUR price) when Concepto carries no share count at all", () => {
+    // The "Cuenta > Corriente > Movimientos" screen (see parseMovimientos in
+    // parseFiles.ts) never embeds a share count in Concepto — so
+    // conceptShares() can never resolve a match on shares for this dataset.
+    // findCashMatch() falls back to matching by fund name instead (still
+    // scoped to the same tipo+date), so the join — and the exact
+    // cash-derived unitPrice — still succeeds.
+    const fondos = fondosRow({});
+    const shareLessMov = movRow({ concepto: "ISHARES EMERGING MRK IND S EUR" }); // no "@ <shares>"
+    const { activities, skipped } = transform([fondos], [shareLessMov], CONFIG);
+    expect(skipped).toHaveLength(0);
+    expect(activities).toHaveLength(1);
+    const [buy] = activities;
+    expect(buy.activityType).toBe("BUY");
+    expect(buy.fxRate).toBeUndefined();
+    // Derived from the real cash debit (53.71 / 4.61), not MyInvestor's
+    // stated "Precio Neto" (11.6260000) — matching by name still gets the
+    // full precision benefit of the join.
+    expect(parseFloat(String(buy.unitPrice))).toBeCloseTo(53.71 / 4.61, 6);
+  });
+
+  it("still skips (doesn't guess) when Concepto has no share count AND no fund-name overlap either", () => {
+    const fondos = fondosRow({});
+    const unrelatedMov = movRow({ concepto: "SOME COMPLETELY UNRELATED FUND" }); // no "@ <shares>", no shared words
+    const { activities, skipped } = transform([fondos], [unrelatedMov], CONFIG);
+    expect(activities).toHaveLength(0);
+    expect(skipped).toHaveLength(2);
+    expect(skipped.find((s) => s.source === "fondos")?.reason).toMatch(/no matching cash movement/i);
+    expect(skipped.find((s) => s.source === "movimientos")?.reason).toMatch(/no matching fund detail/i);
+  });
+
   it("falls back to native-currency booking when only the fondos file is uploaded", () => {
     const { activities, skipped } = transform([fondosRow({})], [], CONFIG);
     expect(skipped).toHaveLength(0);

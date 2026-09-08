@@ -7,38 +7,45 @@
 	</div>
 </div>
 <head>
-<title>Operaciones de cuentas</title>
+<title>Movimientos de cuentas</title>
 <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
 <script>
-var tituloFMT = 'Operaciones de cuentas';
+var tituloFMT = 'Movimientos de cuentas';
 var subtituloFMT = '';
-var textoinicioFMT = 'A continuación se muestran las operaciones realizadas sobre sus cuentas.';
+var textoinicioFMT = 'A continuación se muestran los movimientos realizados sobre sus cuentas.';
 var formatoFecha="dd/MM/yyyy";
 var separadorMiles = '.';
 var separadorDecimales = ',';
-var nombreP = 'fo_co_conope';
 </script>
 </head>
 
-<html>
- <body>
-   <table border="1">
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<body>
+
+ <table border="1">
     <tr>
 	 <th>Fecha operación</th>
-	 <th>Fecha valor</th>
+	 <th>FECHA VALOR</th>
 	 <th>Tipo de operación</th>
 	 <th>Concepto</th>
-	 <th>Divisa</th>
-	 <th>Importe</th>
+	 <th colspan="2">Cargo/Abono<br>Importe</th>
+	 <th>Saldo</th>
 	</tr>
+
+  <tr>
+   <td align="center">01/01/2020</td>
+   <td colspan="5">Saldo Inicio</td>
+   <td>100.000,00</td>
+  </tr>
 
     <tr>
 	 <td align="center">01/01/2020&nbsp;</td>
 	 <td align="center">01/01/2020&nbsp;</td>
 	 <td>APERTURA</td>
 	 <td>Apertura de cuenta</td>
-	 <td>EUR</td>
+	 <td>A</td>
 	 <td>+0,00</td>
+	 <td>100.000,00</td>
 	</tr>
 
     <tr>
@@ -46,8 +53,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">01/01/2026&nbsp;</td>
 	 <td>LIQUIDAC. INTERESES</td>
 	 <td>Liquidacion intereses cuenta</td>
-	 <td>EUR</td>
+	 <td>A</td>
 	 <td>+0,84</td>
+	 <td>100.000,84</td>
 	</tr>
 
     <tr>
@@ -55,17 +63,19 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">01/01/2026&nbsp;</td>
 	 <td>CARGO RETENCION A CUENTA</td>
 	 <td>Retencion IRPF intereses</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-0,16</td>
+	 <td>100.000,68</td>
 	</tr>
 
     <tr>
 	 <td align="center">06/01/2026&nbsp;</td>
 	 <td align="center">09/01/2026&nbsp;</td>
 	 <td>SUSCRIPCION IIC</td>
-	 <td>SAMPLE WORLD INDEX FUND EUR @ 4.61</td>
-	 <td>EUR</td>
+	 <td>SAMPLE WORLD INDEX FUND EUR</td>
+	 <td>C</td>
 	 <td>-53,69</td>
+	 <td>99.946,99</td>
 	</tr>
 
     <tr>
@@ -73,26 +83,29 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">15/02/2026&nbsp;</td>
 	 <td>ABONO PROMOCION</td>
 	 <td>Bono bienvenida</td>
-	 <td>EUR</td>
+	 <td>A</td>
 	 <td>+25,00</td>
+	 <td>99.971,99</td>
 	</tr>
 
     <tr>
 	 <td align="center">10/02/2026&nbsp;</td>
 	 <td align="center">12/02/2026&nbsp;</td>
 	 <td>REEMBOLSO IIC</td>
-	 <td>SAMPLE WORLD INDEX FUND EUR @ 2</td>
-	 <td>EUR</td>
+	 <td>SAMPLE WORLD INDEX FUND EUR</td>
+	 <td>A</td>
 	 <td>+23,98</td>
+	 <td>99.995,97</td>
 	</tr>
 
     <tr>
 	 <td align="center">03/03/2026&nbsp;</td>
 	 <td align="center">05/03/2026&nbsp;</td>
 	 <td>SUSCRIPCION IIC</td>
-	 <td>SAMPLE US EQUITY INDEX USD @ 10</td>
-	 <td>EUR</td>
+	 <td>SAMPLE US EQUITY INDEX USD</td>
+	 <td>C</td>
 	 <td>-230,50</td>
+	 <td>99.765,47</td>
 	</tr>
 
     <tr>
@@ -100,8 +113,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">20/03/2026&nbsp;</td>
 	 <td>TRANSFERENCIA SEPA</td>
 	 <td>Sample Sender Uno</td>
-	 <td>EUR</td>
+	 <td>A</td>
 	 <td>+200,00</td>
+	 <td>99.965,47</td>
 	</tr>
 
     <tr>
@@ -109,17 +123,39 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">22/03/2026&nbsp;</td>
 	 <td>TRANSFERENCIA INMEDIATA</td>
 	 <td>Retirada a cuenta personal</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-50,00</td>
+	 <td>99.915,47</td>
 	</tr>
 
     <tr>
 	 <td align="center">15/04/2026&nbsp;</td>
 	 <td align="center">17/04/2026&nbsp;</td>
 	 <td>SUSCRIPCION IIC</td>
-	 <td>SAMPLE BOND FUND EUR @ 1.5</td>
-	 <td>EUR</td>
+	 <td>SAMPLE BOND FUND EUR</td>
+	 <td>C</td>
 	 <td>-15,00</td>
+	 <td>99.900,47</td>
+	</tr>
+
+    <tr>
+	 <td align="center">01/07/2026&nbsp;</td>
+	 <td align="center">03/07/2026&nbsp;</td>
+	 <td>SUSCRIPCION IIC</td>
+	 <td>BRANDX SAMPLE JAPAN INDEX FD</td>
+	 <td>C</td>
+	 <td>-44,85</td>
+	 <td>99.855,62</td>
+	</tr>
+
+    <tr>
+	 <td align="center">01/07/2026&nbsp;</td>
+	 <td align="center">03/07/2026&nbsp;</td>
+	 <td>SUSCRIPCION IIC</td>
+	 <td>SAMPLE EUROPE BOND FUND</td>
+	 <td>C</td>
+	 <td>-30,00</td>
+	 <td>99.825,62</td>
 	</tr>
 
     <tr>
@@ -127,8 +163,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">05/07/2026&nbsp;</td>
 	 <td>COMISION GESTION CARTERA OF</td>
 	 <td>Cartera Indexada</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-1,20</td>
+	 <td>99.899,27</td>
 	</tr>
 
     <tr>
@@ -136,8 +173,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">05/07/2026&nbsp;</td>
 	 <td>IVA SOBRE COMISIONES</td>
 	 <td>IVA gestion cartera</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-0,25</td>
+	 <td>99.899,02</td>
 	</tr>
 
     <tr>
@@ -145,8 +183,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">03/07/2026&nbsp;</td>
 	 <td>COMISION CUSTODIA MYINVESTOR</td>
 	 <td>EFECTIVO-EUR @ 0</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-2,48</td>
+	 <td>99.896,54</td>
 	</tr>
 
     <tr>
@@ -154,8 +193,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">27/06/2026&nbsp;</td>
 	 <td>ABONO POR TRASPASO</td>
 	 <td>Aportacion a mi cartera</td>
-	 <td>EUR</td>
+	 <td>A</td>
 	 <td>+2,41</td>
+	 <td>99.898,95</td>
 	</tr>
 
     <tr>
@@ -163,8 +203,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">28/06/2026&nbsp;</td>
 	 <td>CARGO POR TRASPASO</td>
 	 <td>Reembolso cartera indexada</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-10,00</td>
+	 <td>99.888,95</td>
 	</tr>
 
     <tr>
@@ -172,8 +213,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">10/07/2026&nbsp;</td>
 	 <td>COMISIONES CUSTODIA</td>
 	 <td>EFECTIVO-EUR @ 0</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-1,15</td>
+	 <td>99.887,80</td>
 	</tr>
 
     <tr>
@@ -181,8 +223,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">16/07/2026&nbsp;</td>
 	 <td>COMPRA RV CONTADO SF</td>
 	 <td>SAMPLE TECH CORP @ 20</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-2.642,00</td>
+	 <td>97.245,80</td>
 	</tr>
 
     <tr>
@@ -190,8 +233,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">17/07/2026&nbsp;</td>
 	 <td>COMPRA RV CONTADO</td>
 	 <td>SAMPLE SEMI INC @ 10</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-1.490,14</td>
+	 <td>95.755,66</td>
 	</tr>
 
     <tr>
@@ -199,8 +243,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">23/07/2026&nbsp;</td>
 	 <td>VENTA DE VALORES</td>
 	 <td>SAMPLE TECH CORP @ 5</td>
-	 <td>EUR</td>
+	 <td>A</td>
 	 <td>+700,00</td>
+	 <td>96.455,66</td>
 	</tr>
 
     <tr>
@@ -208,8 +253,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">24/07/2026&nbsp;</td>
 	 <td>ABONO DE DIVIDENDO</td>
 	 <td>SAMPLE SEMI INC @ 10</td>
-	 <td>EUR</td>
+	 <td>A</td>
 	 <td>+0,98</td>
+	 <td>96.456,64</td>
 	</tr>
 
     <tr>
@@ -217,8 +263,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">27/07/2026&nbsp;</td>
 	 <td>ABONO DE DIVIDENDO</td>
 	 <td>ANUL. SAMPLE SEMI INC @ 10</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-0,98</td>
+	 <td>96.455,66</td>
 	</tr>
 
     <tr>
@@ -226,8 +273,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">05/08/2026&nbsp;</td>
 	 <td>COMPRA RF VCTO</td>
 	 <td>SLTR  100726 @ 51</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-50.044,10</td>
+	 <td>46.411,56</td>
 	</tr>
 
     <tr>
@@ -235,8 +283,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">10/07/2027&nbsp;</td>
 	 <td>AMORTIZACION RF</td>
 	 <td>SLTR  100726 @ 51</td>
-	 <td>EUR</td>
+	 <td>A</td>
 	 <td>+51.000,00</td>
+	 <td>97.411,56</td>
 	</tr>
 
     <tr>
@@ -244,8 +293,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">06/08/2026&nbsp;</td>
 	 <td>BIZUM ENVIADO</td>
 	 <td>Sample Cena Amigos</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-9,79</td>
+	 <td>97.401,77</td>
 	</tr>
 
     <tr>
@@ -253,8 +303,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">07/08/2026&nbsp;</td>
 	 <td>BIZUM RECIBIDO</td>
 	 <td>Sin concepto</td>
-	 <td>EUR</td>
+	 <td>A</td>
 	 <td>+21,00</td>
+	 <td>97.422,77</td>
 	</tr>
 
     <tr>
@@ -262,8 +313,9 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">08/08/2026&nbsp;</td>
 	 <td>COMPRA COMERCIO O/L</td>
 	 <td>SAMPLE SHOP ONLINE</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-3,50</td>
+	 <td>97.419,27</td>
 	</tr>
 
     <tr>
@@ -271,9 +323,17 @@ var nombreP = 'fo_co_conope';
 	 <td align="center">11/08/2026&nbsp;</td>
 	 <td>TRANSF INMEDIATA EMITIDA</td>
 	 <td>Sample Beneficiario Dos</td>
-	 <td>EUR</td>
+	 <td>C</td>
 	 <td>-17,81</td>
+	 <td>97.401,46</td>
 	</tr>
+
+  <tr>
+   <td align="center">11/08/2027</td>
+   <td colspan="5">Saldo Final</td>
+   <td>97.401,46</td>
+  </tr>
+
    </table>
  </body>
 </html>

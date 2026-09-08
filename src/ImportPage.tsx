@@ -20,7 +20,7 @@ import {
   TabsTrigger,
 } from "@wealthfolio/ui";
 import { loadSettings, saveSettings } from "./settings";
-import { parseMyInvestorHtml, readMyInvestorFile } from "./parseFiles";
+import { describeUnknownFormat, parseMyInvestorHtml, readMyInvestorFile } from "./parseFiles";
 import { SecurityMappingStep } from "./SecurityMappingStep";
 import type { SecurityInfo, SecurityMapping } from "./SecurityMappingStep";
 import { fxRateKey, isForeignTraspaso, transform } from "./transform";
@@ -43,6 +43,26 @@ function fmtDate(iso: string): string {
 function truncate(s: string | null | undefined, n = 60): string {
   if (!s) return "";
   return s.length > n ? s.slice(0, n) + "…" : s;
+}
+
+// Prefills a GitHub issue with a structural-only diagnostic (see
+// describeUnknownFormat) so a report on a new/changed export layout arrives
+// with enough detail to fix without back-and-forth — and without asking the
+// user to paste their actual financial data anywhere.
+function newFormatIssueUrl(fileName: string, diagnostic: string): string {
+  const title = `Unrecognised export format: ${fileName}`;
+  const body = [
+    "MyInvestor Importer didn't recognise this file as a valid \"movimientos\" or \"fondos\" export.",
+    "",
+    "**Diagnostic summary** (structural only — no dates, amounts, or fund names):",
+    "```",
+    diagnostic,
+    "```",
+    "",
+    "If you're able to, please also attach the export file here with any amounts, names, and account numbers redacted.",
+  ].join("\n");
+  const params = new URLSearchParams({ title, body });
+  return `https://github.com/blastik/myinvestor-importer-addon/issues/new?${params.toString()}`;
 }
 
 function activityStatus(a: ActivityImport): "valid" | "duplicate" | "error" {
@@ -88,31 +108,47 @@ function applySecurityMappings(
   });
 }
 
-// ─── UploadZone ─────────────────────────────────────────────────────────────
+// ─── ExportUploadZone ───────────────────────────────────────────────────────
 
 interface FileSlot {
   fileName: string;
   rows: FondosRow[] | MovimientosRow[];
 }
 
-function UploadZone({
+const EXPORT_INFO: Record<"movimientos" | "fondos", { title: string; menuPath: string }> = {
+  movimientos: {
+    title: "Cuentas",
+    menuPath: "Cuenta > Corriente > Operaciones y consultas > Consulta de operaciones",
+  },
+  fondos: {
+    title: "Inversiones",
+    menuPath: "Inversiones > Fondos > Operaciones y consultas > Consulta de operaciones",
+  },
+};
+
+function ExportUploadZone({
+  kind,
+  slots,
   onFiles,
-  error,
+  onRemove,
 }: {
-  onFiles: (files: File[]) => void;
-  error: string;
+  kind: "movimientos" | "fondos";
+  slots: FileSlot[];
+  onFiles: (files: File[], kind: "movimientos" | "fondos") => void;
+  onRemove: (kind: "movimientos" | "fondos", fileName: string) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragging(false);
-      const files = [...e.dataTransfer.files];
-      if (files.length > 0) onFiles(files);
+  const info = EXPORT_INFO[kind];
+
+  const handleFiles = useCallback(
+    (files: FileList | File[]) => {
+      const list = [...files];
+      if (list.length > 0) onFiles(list, kind);
     },
-    [onFiles],
+    [onFiles, kind],
   );
+
   return (
     <div
       onDragOver={(e) => {
@@ -120,9 +156,13 @@ function UploadZone({
         setDragging(true);
       }}
       onDragLeave={() => setDragging(false)}
-      onDrop={handleDrop}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        handleFiles(e.dataTransfer.files);
+      }}
       onClick={() => inputRef.current?.click()}
-      className={`cursor-pointer rounded-lg border-2 border-dashed p-10 text-center transition-colors ${
+      className={`cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
         dragging
           ? "border-primary bg-primary/5"
           : "border-muted-foreground/30 hover:border-primary/50"
@@ -135,18 +175,44 @@ function UploadZone({
         multiple
         className="hidden"
         onChange={(e) => {
-          const files = [...(e.target.files ?? [])];
-          if (files.length > 0) onFiles(files);
+          handleFiles(e.target.files ?? []);
           e.target.value = "";
         }}
       />
-      <Icons.Upload className="text-muted-foreground mx-auto mb-3 h-8 w-8" />
-      <p className="text-sm font-medium">Drop your MyInvestor / Inversis exports here</p>
-      <p className="text-muted-foreground mt-1 text-xs">
-        both the cuenta corriente "movimientos" and fondos "consulta de operaciones" files — or click
-        to browse
-      </p>
-      {error && <p className="text-destructive mt-3 text-xs">{error}</p>}
+      <p className="text-sm font-medium">{info.title}</p>
+      <p className="text-muted-foreground mt-1 text-xs">{info.menuPath}</p>
+      <div className="mt-4">
+        {slots.length > 0 ? (
+          <div className="space-y-1.5">
+            {slots.map((slot) => (
+              <div key={slot.fileName} className="flex items-center justify-center gap-2">
+                <Icons.FileText className="text-muted-foreground h-5 w-5 shrink-0" />
+                <div className="min-w-0 flex-1 text-left">
+                  <p className="truncate text-sm font-medium">{slot.fileName}</p>
+                  <p className="text-muted-foreground text-xs">{slot.rows.length} rows parsed</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemove(kind, slot.fileName);
+                  }}
+                  className="text-muted-foreground hover:text-destructive shrink-0 px-1 text-xs"
+                  aria-label={`Remove ${slot.fileName}`}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <p className="text-muted-foreground pt-1 text-xs">Click or drop to add more files</p>
+          </div>
+        ) : (
+          <>
+            <Icons.Upload className="text-muted-foreground mx-auto h-6 w-6" />
+            <p className="text-muted-foreground mt-1 text-xs">Drop file(s) here, or click to browse</p>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -251,8 +317,8 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
   const [settings, setSettings] = useState<AddonSettings | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
 
-  const [fondosFile, setFondosFile] = useState<FileSlot | null>(null);
-  const [movimientosFile, setMovimientosFile] = useState<FileSlot | null>(null);
+  const [fondosFiles, setFondosFiles] = useState<FileSlot[]>([]);
+  const [movimientosFiles, setMovimientosFiles] = useState<FileSlot[]>([]);
   const [parseResult, setParseResult] = useState<TransformResult | null>(null);
   const [securities, setSecurities] = useState<SecurityInfo[]>([]);
   const [mappings, setMappings] = useState<Map<string, SecurityMapping>>(new Map());
@@ -260,7 +326,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
   const [excludedLines, setExcludedLines] = useState<Set<number>>(new Set());
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
 
-  const [fileError, setFileError] = useState("");
+  const [fileError, setFileError] = useState<React.ReactNode>("");
   const [checkError, setCheckError] = useState("");
   const [importProgress, setImportProgress] = useState(0);
   const [importResult, setImportResult] = useState<ImportActivitiesResult | null>(null);
@@ -405,17 +471,25 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
         if (known) prefilled.set(s.isin, known);
       }
       setMappings(prefilled);
-
-      if (secs.length === 0) {
-        void runCheckImport(result.activities);
-      } else if (secs.every((s) => prefilled.has(s.isin))) {
-        void runCheckImport(applySecurityMappings(result.activities, prefilled));
-      } else {
-        setStep("asset-review");
-      }
+      // Stays on the "upload" step — advancing is the user's call via the
+      // Continue button below, not automatic on every file drop.
     },
-    [settings, runCheckImport],
+    [settings],
   );
+
+  // Decides where "Continue" on the upload step goes: straight to
+  // validation when there's nothing to map (or everything's already
+  // mapped from a prior import), otherwise the asset-mapping step.
+  const proceedFromUpload = useCallback(() => {
+    if (!parseResult) return;
+    if (securities.length === 0) {
+      void runCheckImport(parseResult.activities);
+    } else if (securities.every((s) => mappings.has(s.isin))) {
+      void runCheckImport(applySecurityMappings(parseResult.activities, mappings));
+    } else {
+      setStep("asset-review");
+    }
+  }, [parseResult, securities, mappings, runCheckImport]);
 
   const handleMappingsComplete = useCallback(
     (resolvedMappings: Map<string, SecurityMapping>) => {
@@ -435,13 +509,19 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
 
   // ── Upload & classify ─────────────────────────────────────────────────────
 
+  // Adds a parsed file to its section's list (replacing any earlier upload
+  // with the same name), then re-runs the transform against every uploaded
+  // file's combined rows. Several files per section — e.g. one movimientos
+  // export per month — are just concatenated; transform() already assigns
+  // each row a stable, unique orderHint from its position in that combined
+  // array, so no cross-file bookkeeping is needed here.
   const handleFiles = useCallback(
-    async (files: File[]) => {
+    async (files: File[], expectedKind: "movimientos" | "fondos") => {
       if (!settings) return;
       setFileError("");
 
-      let nextFondos = fondosFile;
-      let nextMovimientos = movimientosFile;
+      let nextFondosFiles = fondosFiles;
+      let nextMovimientosFiles = movimientosFiles;
 
       for (const file of files) {
         let html: string;
@@ -452,27 +532,69 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
           return;
         }
         const parsed = parseMyInvestorHtml(html);
-        if (parsed.kind === "fondos") {
-          nextFondos = { fileName: file.name, rows: parsed.rows };
-        } else if (parsed.kind === "movimientos") {
-          nextMovimientos = { fileName: file.name, rows: parsed.rows };
-        } else {
+
+        if (parsed.kind === "unknown") {
+          const issueUrl = newFormatIssueUrl(file.name, describeUnknownFormat(html));
           setFileError(
-            `${file.name} wasn't recognised as a MyInvestor export. Make sure you exported from ` +
-              `"Operaciones y consultas" under either Cuenta > Corriente or Inversiones > Fondos.`,
+            <>
+              {file.name} wasn't recognised as a MyInvestor/Inversis export. Make sure you exported from
+              "Operaciones y consultas" under either Cuenta &gt; Corriente or Inversiones &gt; Fondos.
+              If you're sure it's a valid export, it may be a format this addon doesn't support yet —{" "}
+              <a href={issueUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                report it on GitHub
+              </a>
+              .
+            </>,
           );
           return;
         }
+
+        // Dropped in the wrong box — e.g. a fondos file onto the Cuentas zone.
+        // Surface a specific correction instead of silently misfiling it.
+        if (parsed.kind !== expectedKind) {
+          const droppedLabel = EXPORT_INFO[parsed.kind].title;
+          const targetLabel = EXPORT_INFO[expectedKind].title;
+          setFileError(`${file.name} looks like a ${droppedLabel} export — drop it in the ${targetLabel} box instead.`);
+          return;
+        }
+
+        const slot: FileSlot = { fileName: file.name, rows: parsed.rows };
+        if (parsed.kind === "fondos") {
+          nextFondosFiles = [...nextFondosFiles.filter((f) => f.fileName !== file.name), slot];
+        } else {
+          nextMovimientosFiles = [...nextMovimientosFiles.filter((f) => f.fileName !== file.name), slot];
+        }
       }
 
-      setFondosFile(nextFondos);
-      setMovimientosFile(nextMovimientos);
+      setFondosFiles(nextFondosFiles);
+      setMovimientosFiles(nextMovimientosFiles);
       void runTransform(
-        (nextFondos?.rows as FondosRow[]) ?? [],
-        (nextMovimientos?.rows as MovimientosRow[]) ?? [],
+        nextFondosFiles.flatMap((f) => f.rows as FondosRow[]),
+        nextMovimientosFiles.flatMap((f) => f.rows as MovimientosRow[]),
       );
     },
-    [settings, fondosFile, movimientosFile, runTransform],
+    [settings, fondosFiles, movimientosFiles, runTransform],
+  );
+
+  const removeFile = useCallback(
+    (kind: "movimientos" | "fondos", fileName: string) => {
+      const nextFondosFiles = kind === "fondos" ? fondosFiles.filter((f) => f.fileName !== fileName) : fondosFiles;
+      const nextMovimientosFiles =
+        kind === "movimientos" ? movimientosFiles.filter((f) => f.fileName !== fileName) : movimientosFiles;
+      setFondosFiles(nextFondosFiles);
+      setMovimientosFiles(nextMovimientosFiles);
+      if (nextFondosFiles.length === 0 && nextMovimientosFiles.length === 0) {
+        setParseResult(null);
+        setSecurities([]);
+        setMappings(new Map());
+        return;
+      }
+      void runTransform(
+        nextFondosFiles.flatMap((f) => f.rows as FondosRow[]),
+        nextMovimientosFiles.flatMap((f) => f.rows as MovimientosRow[]),
+      );
+    },
+    [fondosFiles, movimientosFiles, runTransform],
   );
 
   const toggleExclude = useCallback((lineNumber: number) => {
@@ -613,8 +735,8 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
 
   const reset = useCallback(() => {
     setStep("upload");
-    setFondosFile(null);
-    setMovimientosFile(null);
+    setFondosFiles([]);
+    setMovimientosFiles([]);
     setParseResult(null);
     setSecurities([]);
     setMappings(new Map());
@@ -656,70 +778,40 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
   // ── Upload ───────────────────────────────────────────────────────────────
 
   if (step === "upload") {
-    const continueToNextStep = securities.length > 0 ? "asset-review" : undefined;
     return (
-      <div className="max-w-xl space-y-4 p-6">
+      <div className="max-w-2xl space-y-4 p-6">
         <div>
           <h1 className="text-2xl font-semibold">Import MyInvestor / Inversis exports</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Export both files from inversis.com: Cuenta &gt; Corriente &gt; Operaciones y consultas &gt;
-            Movimientos, and Inversiones &gt; Fondos &gt; Operaciones y consultas &gt; Consulta de
-            operaciones. Uploading both gives the complete picture — fund detail plus the real EUR cash
-            amount.
+            Uploading both gives the complete picture — fund detail plus the real EUR cash amount.
+            Either one alone still works, with less detail. You can upload more than one file per
+            section (e.g. one export per month).
           </p>
         </div>
-        {fondosFile || movimientosFile ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <ExportUploadZone kind="movimientos" slots={movimientosFiles} onFiles={handleFiles} onRemove={removeFile} />
+          <ExportUploadZone kind="fondos" slots={fondosFiles} onFiles={handleFiles} onRemove={removeFile} />
+        </div>
+        {fileError && <p className="text-destructive text-xs">{fileError}</p>}
+        {parseResult && (fondosFiles.length > 0 || movimientosFiles.length > 0) && (
           <div className="space-y-3">
-            {[
-              { slot: movimientosFile, label: "Movimientos (cuenta corriente)" },
-              { slot: fondosFile, label: "Consulta de operaciones (fondos)" },
-            ].map(({ slot, label }) => (
-              <div key={label} className="flex items-center gap-3 rounded-lg border p-4">
-                <Icons.FileText className="text-muted-foreground h-8 w-8 shrink-0" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-muted-foreground text-xs">{label}</p>
-                  {slot ? (
-                    <>
-                      <p className="truncate text-sm font-medium">{slot.fileName}</p>
-                      <p className="text-muted-foreground text-xs">{slot.rows.length} rows parsed</p>
-                    </>
-                  ) : (
-                    <p className="text-muted-foreground text-sm italic">Not uploaded</p>
-                  )}
-                </div>
-              </div>
-            ))}
-            {parseResult && (
-              <p className="text-muted-foreground text-xs">
-                {parseResult.activities.length} activities parsed
-                {parseResult.skipped.length > 0 && ` · ${parseResult.skipped.length} skipped`}
-                {parseResult.duplicates.length > 0 &&
-                  ` · ${parseResult.duplicates.length} cross-addon duplicates`}
-                {parseResult.fxRateWarnings.length > 0 &&
-                  ` · ${parseResult.fxRateWarnings.length} fx rate warnings`}
-              </p>
-            )}
+            <p className="text-muted-foreground text-xs">
+              {parseResult.activities.length} activities parsed
+              {parseResult.skipped.length > 0 && ` · ${parseResult.skipped.length} skipped`}
+              {parseResult.duplicates.length > 0 &&
+                ` · ${parseResult.duplicates.length} cross-addon duplicates`}
+              {parseResult.fxRateWarnings.length > 0 &&
+                ` · ${parseResult.fxRateWarnings.length} fx rate warnings`}
+            </p>
             <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                onClick={() =>
-                  parseResult &&
-                  (continueToNextStep
-                    ? setStep(continueToNextStep)
-                    : void runCheckImport(parseResult.activities))
-                }
-                disabled={!parseResult}
-              >
+              <Button className="flex-1" onClick={proceedFromUpload} disabled={!parseResult}>
                 Continue
               </Button>
               <Button variant="outline" onClick={reset}>
                 Start over
               </Button>
             </div>
-            <UploadZone onFiles={handleFiles} error={fileError} />
           </div>
-        ) : (
-          <UploadZone onFiles={handleFiles} error={fileError} />
         )}
       </div>
     );

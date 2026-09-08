@@ -123,7 +123,9 @@ export function SettingsPage({ ctx }: { ctx: AddonContext }) {
           <p className="text-muted-foreground text-xs">
             MyInvestor/Inversis keeps cash and securities in a single account — unlike Trade Republic,
             there's no cash/portfolio split to configure. Select the Wealthfolio account that
-            represents your MyInvestor/Inversis cuenta.
+            represents your MyInvestor/Inversis <strong>securities/investment account</strong> — the one
+            that holds your funds — not a separate cash or "cuenta corriente" checking account, even
+            though MyInvestor itself books cash movements against this same account.
           </p>
           <div className="space-y-1">
             <Label>MyInvestor/Inversis account</Label>
