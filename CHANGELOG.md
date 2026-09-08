@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.1] - 2026-09-08
+
+### Fixed
+
+- Non-EUR fund switches (traspasos) now look up their historical FX rate by `fechaLiquidacion` (settlement date) instead of `fechaOperacion` (order date). The two dates were confirmed to diverge by up to a week on a real account, and the order-date lookup was pulling the wrong day's exchange rate on every affected switch — an avoidable source of drift on top of the inherent approximation of using a third-party historical rate instead of Inversis' own internal conversion rate. Confirmed against a real ~2.9-year account (fully reconciled otherwise — 0 unexpected skips, every fund's share count matching the broker's own holdings screen exactly) where this was responsible for a €14.72 EUR cash-balance shortfall against the broker's own "Saldo Final".
+
 ## [1.3.0] - 2026-09-08
 
 ### Added

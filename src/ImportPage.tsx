@@ -421,15 +421,17 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
       // every unique (currency, date) pair into one lookup; best-effort, same
       // as the dedup fetch above — a failure here just means transform()
       // falls back to native-currency booking and surfaces a warning per row.
+      // Keyed by fechaLiquidacion (settlement), not fechaOperacion (order
+      // date) — see the comment on traspasoFxRate in transform.ts for why.
       let fxRates: Record<string, number> = {};
       try {
         const pairs = new Map<string, ExchangeRateDateQuery>();
         for (const r of fondos) {
           if (isForeignTraspaso(r)) {
-            pairs.set(fxRateKey(r.divisa, r.fechaOperacion), {
+            pairs.set(fxRateKey(r.divisa, r.fechaLiquidacion), {
               fromCurrency: r.divisa,
               toCurrency: "EUR",
-              date: r.fechaOperacion,
+              date: r.fechaLiquidacion,
             });
           }
         }
