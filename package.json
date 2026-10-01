@@ -30,26 +30,26 @@
     "test:watch": "vitest"
   },
   "peerDependencies": {
-    "@wealthfolio/addon-sdk": "^3.8.0",
-    "@wealthfolio/ui": "^3.8.0",
+    "@wealthfolio/addon-sdk": "^3.9.0",
+    "@wealthfolio/ui": "^3.9.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.3",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "@wealthfolio/addon-dev-tools": "^3.8.0",
-    "@wealthfolio/addon-sdk": "^3.8.0",
-    "@wealthfolio/ui": "^3.8.0",
-    "happy-dom": "^20.11.15",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "@wealthfolio/addon-dev-tools": "^3.9.0",
+    "@wealthfolio/addon-sdk": "^3.9.0",
+    "@wealthfolio/ui": "^3.9.0",
+    "happy-dom": "^20.14.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2",
+    "vite": "^8.3.1",
     "vitest": "^4.1.11"
   },
   "files": [
