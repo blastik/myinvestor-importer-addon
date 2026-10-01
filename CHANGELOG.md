@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0] - 2026-10-01
+
+### Changed
+
+- Now requires Wealthfolio 3.9.0 or later (`minWealthfolioVersion`, `sdkVersion` and `hostDependencies` in `manifest.json`, plus `peerDependencies` in `package.json`), matching the `@wealthfolio/addon-sdk`/`@wealthfolio/ui` 3.9.0 packages the addon is now built and type-checked against.
+- Dependency updates: `@wealthfolio/addon-sdk`, `@wealthfolio/ui`, `@wealthfolio/addon-dev-tools` 3.9.0, React 19.3, Vite 8.3, Vitest 5, happy-dom 20.14.
+
 ## [1.3.2] - 2026-09-08
 
 ### Fixed
