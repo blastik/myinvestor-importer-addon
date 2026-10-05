@@ -230,6 +230,21 @@ describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by con
     expect(activities[0].activityType).toBe("SELL");
   });
 
+  it("values a switch leg at the broker's importe, not titulos × precio, when the two disagree", () => {
+    // importe is what actually moved between funds; using titulos × precio
+    // left a switch history no longer netting to zero (phantom cash).
+    const fondos = fondosRow({ operacion: "SUSCR.POR TRASPASO I", titulos: "5.00000000", precio: "10.0000000", importe: "45.00" });
+    const [buy] = transform([fondos], [], CONFIG).activities;
+    expect(buy.quantity).toBe("5.00000000");
+    expect(parseFloat(String(buy.unitPrice)) * 5).toBeCloseTo(45, 9);
+  });
+
+  it("falls back to precio for a switch leg with no usable importe", () => {
+    const fondos = fondosRow({ operacion: "REEMB.POR TRASPASO I", precio: "11.6260000", importe: "" });
+    const [sell] = transform([fondos], [], CONFIG).activities;
+    expect(sell.unitPrice).toBe("11.6260000");
+  });
+
   it("ALTA/BAJA IIC SWITCH map to BUY/SELL independently (no shared group, no pairing needed)", () => {
     const alta = fondosRow({ operacion: "ALTA IIC SWITCH", numOperacion: "1" });
     const baja = fondosRow({ operacion: "BAJA IIC SWITCH", numOperacion: "2", isin: "IE00OTHER0001" });
@@ -269,8 +284,9 @@ describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by con
     expect(activities).toHaveLength(1);
     expect(activities[0].currency).toBe("USD");
     expect(activities[0].fxRate).toBe("0.9");
-    // unitPrice/quantity stay native — only the fxRate is added.
-    expect(activities[0].unitPrice).toBe(fondos.precio);
+    // unitPrice/quantity stay native (unitPrice from importe, see
+    // traspasoUnitPrice) — only the fxRate is added.
+    expect(parseFloat(String(activities[0].unitPrice))).toBeCloseTo(53.71 / 4.61, 9);
     expect(fxRateWarnings).toHaveLength(0);
   });
 
@@ -298,7 +314,7 @@ describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by con
     const { activities, fxRateWarnings } = transform([fondos], [], CONFIG, [], [], {});
     expect(activities).toHaveLength(1);
     expect(activities[0].fxRate).toBeUndefined();
-    expect(activities[0].unitPrice).toBe(fondos.precio);
+    expect(parseFloat(String(activities[0].unitPrice))).toBeCloseTo(53.71 / 4.61, 9);
     expect(fxRateWarnings).toHaveLength(1);
     expect(fxRateWarnings[0].reason).toMatch(/no historical usd→eur exchange rate/i);
     // The reason names the settlement date actually looked up, not the order date.

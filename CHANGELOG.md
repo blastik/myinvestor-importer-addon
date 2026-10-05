@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.5.1] - 2026-10-05
+
+### Fixed
+
+- Fund switches (traspasos) are now valued at the broker's own "Importe neto" instead of shares × price. The two usually agree to the cent, but some switch legs differ by several percent, which left the account's cash balance short against the broker's after a full import (switches are cash-neutral in reality, so their buy and sell legs must cancel out). Share quantities are unchanged; only the per-unit price of switch legs is affected. Re-importing shows existing switch activities as duplicates with a "Changed" badge; include them to update them in place.
+
 ## [1.5.0] - 2026-10-05
 
 ### Fixed
