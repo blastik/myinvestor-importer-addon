@@ -62,8 +62,8 @@ function parseFondos(html: string): FondosRow[] {
 // "Cuenta > Corriente > Movimientos" ("Movimientos de cuentas" title): 7
 // columns — no Divisa column (cash is always EUR, see MovimientosRow.divisa),
 // a Cargo/Abono C/A indicator column that's redundant with Importe's own
-// sign, and a trailing running Saldo balance column. Both the C/A and Saldo
-// columns are ignored.
+// sign (ignored), and a trailing running Saldo balance column (kept only as
+// a row-identity tiebreaker, see movimientosRowKey).
 function parseMovimientos(html: string): MovimientosRow[] {
   const sixColumn = tableRows(html, 6).map(([fOp, fVal, tipo, concepto, divisa, importe]) => ({
     fechaOperacion: ddmmyyyyToIso(fOp),
@@ -75,14 +75,49 @@ function parseMovimientos(html: string): MovimientosRow[] {
   }));
   if (sixColumn.length > 0) return sixColumn;
 
-  return tableRows(html, 7).map(([fOp, fVal, tipo, concepto, , importe]) => ({
+  return tableRows(html, 7).map(([fOp, fVal, tipo, concepto, , importe, saldo]) => ({
     fechaOperacion: ddmmyyyyToIso(fOp),
     fechaValor: ddmmyyyyToIso(fVal),
     tipo,
     concepto,
     divisa: "EUR",
     importe,
+    saldo,
   }));
+}
+
+// Content-based identity for a movimientos row, independent of which file
+// it came from or its position in that file. Used both to build the
+// row's [ref:...] tag (see transform.ts) and to collapse rows that appear in
+// more than one uploaded export (overlapping date ranges).
+export function movimientosRowKey(r: MovimientosRow): string {
+  const norm = (s: string | undefined) => (s ?? "").trim().replace(/\s+/g, " ");
+  return [r.fechaOperacion, r.fechaValor, norm(r.tipo), norm(r.concepto), norm(r.importe), norm(r.saldo)].join("|");
+}
+
+// Combines several movimientos exports into one row list without
+// double-counting rows that more than one of them contains (e.g. a
+// "last 12 months" export uploaded next to a lifetime one). A row that
+// legitimately appears N times within a single export (two identical
+// same-day transfers in the 6-column layout, which has no Saldo to tell
+// them apart) is kept N times — the merged count for each key is the
+// maximum seen in any one file, not the sum across files.
+export function mergeMovimientosFiles(files: MovimientosRow[][]): MovimientosRow[] {
+  const kept = new Map<string, number>();
+  const merged: MovimientosRow[] = [];
+  for (const rows of files) {
+    const seenInFile = new Map<string, number>();
+    for (const r of rows) {
+      const key = movimientosRowKey(r);
+      const n = (seenInFile.get(key) ?? 0) + 1;
+      seenInFile.set(key, n);
+      if (n > (kept.get(key) ?? 0)) {
+        kept.set(key, n);
+        merged.push(r);
+      }
+    }
+  }
+  return merged;
 }
 
 export function parseMyInvestorHtml(html: string): ParsedFile {

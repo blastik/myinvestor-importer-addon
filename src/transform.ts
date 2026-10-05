@@ -8,7 +8,7 @@ import type {
   SkippedRow,
   TransformResult,
 } from "./types";
-import { fondosNum, movimientosNum } from "./parseFiles";
+import { fondosNum, movimientosNum, movimientosRowKey } from "./parseFiles";
 
 // A bank transfer recorded in movimientos and a cross-addon TRANSFER_IN (or
 // an already-imported DEPOSIT from an earlier run of this addon) are
@@ -28,6 +28,16 @@ function findAmountDateMatch<T extends { date: string; amount: number }>(
 }
 
 const CASH_SYMBOL = "$CASH-EUR";
+
+// 32-bit FNV-1a, hex. Only needs to be stable and well-spread, not secure.
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
 
 function fmtAmt(n: number): string {
   const abs = Math.abs(n);
@@ -160,6 +170,19 @@ function wordOverlapScore(nombre: string, concepto: string): number {
   return nombreWords.filter((w) => conceptoWords.has(w)).length;
 }
 
+// Whether a movimientos EUR amount can be the cash side of a fondos trade
+// worth `nativeCost` (titulos × precio, in the fund's own currency). For EUR
+// funds the two differ only by NAV rounding (a few cents), so the tolerance
+// is tight: 3% or 2 cents, whichever is larger (tiny trades round to whole
+// cents). For other currencies the EUR amount also includes the FX
+// conversion, so only gross mismatches are rejected.
+function plausibleCashAmount(eurAmount: number, nativeCost: number, divisa: string): boolean {
+  if (!(nativeCost > 0)) return true;
+  if (divisa === "EUR") return Math.abs(eurAmount - nativeCost) <= Math.max(0.02, nativeCost * 0.03);
+  const ratio = eurAmount / nativeCost;
+  return ratio > 0.5 && ratio < 2;
+}
+
 // A real MyInvestor account's movimientos history is not always homogeneous
 // on this point: confirmed against a real multi-year account that some
 // SUSCRIPCION IIC/REEMBOLSO IIC rows carry a share-count suffix in Concepto
@@ -177,6 +200,8 @@ function findCashMatch(
   fechaLiquidacion: string,
   titulos: number,
   nombre: string,
+  nativeCost: number,
+  divisa: string,
 ): { row: MovimientosRow; index: number; consumed: boolean } | undefined {
   const sameTipoDate = pool.filter(
     (p) => !p.consumed && p.row.tipo === expectedTipo && p.row.fechaValor === fechaLiquidacion,
@@ -197,11 +222,20 @@ function findCashMatch(
   }
 
   // No share-count match at all — fall back to fund-name similarity alone,
-  // still scoped to the same tipo+date. Require an unambiguous, non-zero
+  // still scoped to the same tipo+date, and only among candidates whose cash
+  // amount is plausible for this trade (see plausibleCashAmount). Without
+  // that filter, generic words every fund name shares ("ACC", "EUR",
+  // "INDEX", "P") were enough to match a trade to a *different* fund's cash
+  // row whenever its real counterpart wasn't in the uploaded movimientos
+  // export (e.g. one that ends partway through a day), booking the trade at
+  // a wildly wrong price. Require an unambiguous, non-zero
   // winner: a lone candidate that shares no words with `nombre` (a
   // coincidental different fund settling the same day) is correctly left
   // unmatched rather than guessed.
-  const scored = sameTipoDate.map((c) => ({ c, score: wordOverlapScore(nombre, c.row.concepto) }));
+  const scored = sameTipoDate
+    .filter((c) => plausibleCashAmount(Math.abs(movimientosNum(c.row.importe)), nativeCost, divisa))
+    .map((c) => ({ c, score: wordOverlapScore(nombre, c.row.concepto) }));
+  if (scored.length === 0) return undefined;
   const maxScore = Math.max(...scored.map((s) => s.score));
   if (maxScore === 0) return undefined;
   const winners = scored.filter((s) => s.score === maxScore);
@@ -233,7 +267,7 @@ export function transform(
     if (r.operacion === "SUSCRIPCION" || r.operacion === "REEMBOLSO") {
       const isBuy = r.operacion === "SUSCRIPCION";
       const expectedTipo = isBuy ? "SUSCRIPCION IIC" : "REEMBOLSO IIC";
-      const match = findCashMatch(cashPool, expectedTipo, r.fechaLiquidacion, titulos, r.nombre);
+      const match = findCashMatch(cashPool, expectedTipo, r.fechaLiquidacion, titulos, r.nombre, titulos * precio, r.divisa);
 
       let fxRate: string | undefined;
       let unitPrice = r.precio;
@@ -376,12 +410,25 @@ export function transform(
     });
   }
 
+  const cashOccurrences = new Map<string, number>();
   for (const entry of cashPool) {
     if (entry.consumed) continue;
     const r = entry.row;
     const amt = movimientosNum(r.importe);
     const absAmt = Math.abs(amt);
-    const orderHint = `z${String(entry.index).padStart(10, "0")}`; // sort after same-day fondos rows
+    // Derived from the row's own content (see movimientosRowKey), never from
+    // its position in the uploaded file(s). The first version used the
+    // file index here, which was only "stable" as long as the exact same
+    // set of files was uploaded in the exact same order: re-importing with a
+    // different combination shifted every index, changed every cash
+    // activity's [ref:...] description, and so defeated Wealthfolio's
+    // description-based idempotency check, so every cash row got imported a
+    // second time. The "z" prefix keeps cash rows sorting after same-day
+    // fondos rows, as before.
+    const rowKey = movimientosRowKey(r);
+    const occurrence = (cashOccurrences.get(rowKey) ?? 0) + 1;
+    cashOccurrences.set(rowKey, occurrence);
+    const orderHint = `z${fnv1a(rowKey)}${occurrence > 1 ? `-${occurrence}` : ""}`;
 
     if (r.tipo === "APERTURA") {
       skipped.push({
@@ -611,7 +658,7 @@ export function transform(
   // on every hashed field, so without a distinguishing tag here they silently
   // collapse into one activity, dropping real shares/cash with no error
   // surfaced anywhere. `orderHint` is unique per source row (fondos
-  // numOperacion, or file index for movimientos-only rows) and stable across
+  // numOperacion, or a content hash for movimientos-only rows) and stable across
   // re-imports of the same export, so tagging the description with it fixes
   // the collision while still letting genuine re-imports be recognised as
   // duplicates rather than re-created.

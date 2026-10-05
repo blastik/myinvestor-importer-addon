@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0] - 2026-10-05
+
+### Fixed
+
+- Re-importing with a different set of movimientos files no longer imports every cash row a second time. A movimientos activity's `[ref:...]` tag was its position in the uploaded files, so a different file set renamed every deposit/fee/interest row, and Wealthfolio's duplicate check treated all of them as new. The ref is now derived from the row's own content.
+- A fund buy/sell is no longer paired with a different fund's cash movement just because their names share generic words ("ACC", "EUR", "INDEX"). This happened when the movimientos export didn't contain the trade's real cash row, and produced wildly wrong prices. The name-based match now also requires the cash amount to be consistent with shares × price.
+- Uploading overlapping movimientos (or fondos) exports together no longer imports the rows they share twice.
+
+### Changed
+
+- The review step now detects activities that already exist in the account even when Wealthfolio's own check misses them (different ref tag, different derived price or exchange rate), by matching on the broker's operation number for fund trades and on type/date/description/amount for cash rows. **All duplicates are now skipped by default**; including one updates the existing activity instead of creating a copy, and a "Changed" badge marks duplicates whose values differ from what's stored.
+
 ## [1.4.0] - 2026-10-01
 
 ### Changed

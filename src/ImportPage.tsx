@@ -20,7 +20,9 @@ import {
   TabsTrigger,
 } from "@wealthfolio/ui";
 import { loadSettings, saveSettings } from "./settings";
-import { describeUnknownFormat, parseMyInvestorHtml, readMyInvestorFile } from "./parseFiles";
+import { findExistingMatches } from "./dedup";
+import type { ExistingActivity, ExistingMatch } from "./dedup";
+import { describeUnknownFormat, mergeMovimientosFiles, parseMyInvestorHtml, readMyInvestorFile } from "./parseFiles";
 import { SecurityMappingStep } from "./SecurityMappingStep";
 import type { SecurityInfo, SecurityMapping } from "./SecurityMappingStep";
 import { fxRateKey, isForeignTraspaso, transform } from "./transform";
@@ -109,6 +111,22 @@ function applySecurityMappings(
 }
 
 // ─── ExportUploadZone ───────────────────────────────────────────────────────
+
+function combineFondos(files: FileSlot[]): FondosRow[] {
+  const seen = new Set<string>();
+  return files
+    .flatMap((f) => f.rows as FondosRow[])
+    .filter((r) => {
+      const id = r.numOperacion.trim();
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+}
+
+function combineMovimientos(files: FileSlot[]): MovimientosRow[] {
+  return mergeMovimientosFiles(files.map((f) => f.rows as MovimientosRow[]));
+}
 
 interface FileSlot {
   fileName: string;
@@ -256,11 +274,13 @@ function ActivityRow({
   activity,
   accountName,
   included,
+  changed,
   onToggleInclude,
 }: {
   activity: ActivityImport;
   accountName: (id: string) => string;
   included: boolean;
+  changed: boolean;
   onToggleInclude: () => void;
 }) {
   const status = activityStatus(activity);
@@ -286,6 +306,14 @@ function ActivityRow({
             <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
               Duplicate
             </span>
+            {changed && (
+              <span
+                title="The existing activity has different quantity/price/amount/fx rate — including this row updates it"
+                className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+              >
+                Changed
+              </span>
+            )}
             <button
               onClick={onToggleInclude}
               className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
@@ -325,6 +353,11 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
   const [checked, setChecked] = useState<ActivityImport[] | null>(null);
   const [excludedLines, setExcludedLines] = useState<Set<number>>(new Set());
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
+  // Snapshot of the target account's activities, fetched alongside the
+  // transform so the confirm step can flag rows that already exist there
+  // (see findExistingMatches), and which of those would change on update.
+  const [existingActivities, setExistingActivities] = useState<ExistingActivity[]>([]);
+  const [changedLines, setChangedLines] = useState<Set<number>>(new Set());
 
   const [fileError, setFileError] = useState<React.ReactNode>("");
   const [checkError, setCheckError] = useState("");
@@ -350,20 +383,46 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
 
   // ── Apply symbol mappings and run checkImport ─────────────────────────────
 
+  // Wealthfolio's checkImport only recognises an exact re-import (same
+  // description, same derived prices) as a duplicate. findExistingMatches
+  // also catches activities this addon created in an earlier import whose
+  // incidental fields have since changed (see dedup.ts) — without it those
+  // are presented as brand-new and get imported a second time. Every
+  // duplicate, from either check, starts out skipped: importing is opt-in
+  // per row, and an included duplicate updates the existing activity in
+  // place rather than creating another one (see handleImport).
   const runCheckImport = useCallback(
     async (activities: ActivityImport[]) => {
       setStep("checking");
+      let validated: ActivityImport[];
       try {
-        const validated = await ctx.api.activities.checkImport(activities);
-        setChecked(validated);
-        setStep("confirm");
+        validated = await ctx.api.activities.checkImport(activities);
       } catch (e) {
         setCheckError(String(e));
-        setChecked(activities);
-        setStep("confirm");
+        validated = activities;
       }
+
+      const matches: Map<number, ExistingMatch> = findExistingMatches(validated, existingActivities);
+      const changed = new Set<number>();
+      const withMatches = validated.map((a) => {
+        const m = a.lineNumber != null ? matches.get(a.lineNumber) : undefined;
+        if (!m || a.duplicateOfId) return a;
+        if (m.differs) changed.add(a.lineNumber as number);
+        return { ...a, duplicateOfId: m.existingId };
+      });
+
+      setChecked(withMatches);
+      setChangedLines(changed);
+      setExcludedLines(
+        new Set(
+          withMatches
+            .filter((a) => activityStatus(a) === "duplicate" && a.lineNumber != null)
+            .map((a) => a.lineNumber as number),
+        ),
+      );
+      setStep("confirm");
     },
-    [ctx],
+    [ctx, existingActivities],
   );
 
   const runTransform = useCallback(
@@ -396,6 +455,19 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
       let existingDeposits: ExistingDeposit[] = [];
       try {
         const existing = await ctx.api.activities.getAll(settings.accountId);
+        const toNum = (v: string | null | undefined) => (v == null || v === "" ? null : parseFloat(v));
+        setExistingActivities(
+          existing.map((a) => ({
+            id: a.id,
+            activityType: a.activityType,
+            date: new Date(a.date).toISOString().slice(0, 10),
+            quantity: toNum(a.quantity),
+            unitPrice: toNum(a.unitPrice),
+            amount: toNum(a.amount),
+            fxRate: toNum(a.fxRate),
+            comment: a.comment ?? "",
+          })),
+        );
         existingCashTransfersIn = existing
           .filter((a) => a.activityType === "TRANSFER_IN" && isCashActivity(a) && a.amount != null)
           .map((a) => ({
@@ -411,7 +483,9 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
             amount: Math.abs(parseFloat(a.amount as string)),
           }));
       } catch {
-        // non-critical — proceed without cross-addon dedup
+        // non-critical — proceed without cross-addon dedup or existing-
+        // activity matching (Wealthfolio's own checkImport still runs)
+        setExistingActivities([]);
       }
 
       // Non-EUR fund switches (traspasos) need a real historical exchange
@@ -514,9 +588,10 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
   // Adds a parsed file to its section's list (replacing any earlier upload
   // with the same name), then re-runs the transform against every uploaded
   // file's combined rows. Several files per section — e.g. one movimientos
-  // export per month — are just concatenated; transform() already assigns
-  // each row a stable, unique orderHint from its position in that combined
-  // array, so no cross-file bookkeeping is needed here.
+  // export per month — are combined; movimientos files go through
+  // mergeMovimientosFiles so a row present in two overlapping exports isn't
+  // imported twice. Fondos rows carry the broker's own operation number and
+  // are de-duplicated on it the same way.
   const handleFiles = useCallback(
     async (files: File[], expectedKind: "movimientos" | "fondos") => {
       if (!settings) return;
@@ -570,10 +645,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
 
       setFondosFiles(nextFondosFiles);
       setMovimientosFiles(nextMovimientosFiles);
-      void runTransform(
-        nextFondosFiles.flatMap((f) => f.rows as FondosRow[]),
-        nextMovimientosFiles.flatMap((f) => f.rows as MovimientosRow[]),
-      );
+      void runTransform(combineFondos(nextFondosFiles), combineMovimientos(nextMovimientosFiles));
     },
     [settings, fondosFiles, movimientosFiles, runTransform],
   );
@@ -591,10 +663,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
         setMappings(new Map());
         return;
       }
-      void runTransform(
-        nextFondosFiles.flatMap((f) => f.rows as FondosRow[]),
-        nextMovimientosFiles.flatMap((f) => f.rows as MovimientosRow[]),
-      );
+      void runTransform(combineFondos(nextFondosFiles), combineMovimientos(nextMovimientosFiles));
     },
     [fondosFiles, movimientosFiles, runTransform],
   );
@@ -744,6 +813,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
     setMappings(new Map());
     setChecked(null);
     setExcludedLines(new Set());
+    setChangedLines(new Set());
     setShowDuplicatesOnly(false);
     setFileError("");
     setCheckError("");
@@ -902,8 +972,10 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
           <div className="bg-muted flex items-center justify-between rounded-lg px-4 py-3 text-sm">
             <span>
               <span className="font-medium">{duplicates.length} duplicate</span>
-              {duplicates.length !== 1 ? "s" : ""} already exist in Wealthfolio — will be{" "}
-              <strong>updated</strong> unless skipped.
+              {duplicates.length !== 1 ? "s" : ""} already exist in Wealthfolio
+              {changedLines.size > 0 && ` (${changedLines.size} with different values)`} —{" "}
+              <strong>skipped</strong> by default. Include one to overwrite the existing activity with
+              this import's values.
             </span>
             <button
               onClick={() => toggleAllDuplicates(duplicates)}
@@ -972,6 +1044,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
                           activity={a}
                           accountName={accountName}
                           included={a.lineNumber == null || !excludedLines.has(a.lineNumber)}
+                          changed={a.lineNumber != null && changedLines.has(a.lineNumber)}
                           onToggleInclude={() =>
                             a.lineNumber != null && toggleExclude(a.lineNumber)
                           }
