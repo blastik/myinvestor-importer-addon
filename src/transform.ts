@@ -155,6 +155,23 @@ function traspasoFxRate(
   return undefined;
 }
 
+// A switch has no cash counterpart, so its value comes from the fondos row
+// alone — and the broker's own "Importe neto" is what actually moved, not
+// titulos × precio. The two agree to the cent on almost every row, but not
+// all: some legs carry an importe several percent away from titulos ×
+// precio (seen on both EUR and USD legs). Valuing switches at titulos ×
+// precio made a full switch history no longer net to zero across its legs,
+// leaving a phantom cash surplus/deficit in the account; valuing them at
+// importe brings it back to within the inherent FX-rate approximation.
+// Quantity is untouched (it's the real share count), only the per-unit
+// price is derived from importe.
+function traspasoUnitPrice(r: FondosRow): string {
+  const titulos = fondosNum(r.titulos);
+  const importe = fondosNum(r.importe);
+  if (titulos > 0 && importe > 0) return String(importe / titulos);
+  return r.precio;
+}
+
 // How many whole words fondos' `nombre` and movimientos' `concepto` have in
 // common (case-insensitive). The two export screens name the same fund
 // differently — confirmed against a real account: fondos' "MSCI JAPAN INDEX
@@ -365,7 +382,7 @@ export function transform(
           instrumentType,
           quoteCcy: r.divisa,
           quantity: r.titulos,
-          unitPrice: r.precio,
+          unitPrice: traspasoUnitPrice(r),
           fee: "0",
           currency: r.divisa,
           fxRate: traspasoFxRate(r, fxRates, fxRateWarnings),
@@ -389,7 +406,7 @@ export function transform(
           instrumentType,
           quoteCcy: r.divisa,
           quantity: r.titulos,
-          unitPrice: r.precio,
+          unitPrice: traspasoUnitPrice(r),
           fee: "0",
           currency: r.divisa,
           fxRate: traspasoFxRate(r, fxRates, fxRateWarnings),
