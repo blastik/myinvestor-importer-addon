@@ -29,6 +29,11 @@ export interface MovimientosRow {
   concepto: string;
   divisa: string; // always EUR in practice
   importe: string; // signed, EUR
+  // Running balance after this row — only present in the 7-column export
+  // layout. Not used for any amount, but it makes otherwise byte-identical
+  // rows (e.g. two same-day transfers of the same amount and concept)
+  // distinguishable, which movimientosRowKey() relies on.
+  saldo?: string;
 }
 
 export type SecurityMapping = SymbolSearchResult | "custom";

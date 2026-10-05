@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { describeUnknownFormat, parseMyInvestorHtml } from "./parseFiles";
+import { describeUnknownFormat, mergeMovimientosFiles, movimientosRowKey, parseMyInvestorHtml } from "./parseFiles";
+import type { MovimientosRow } from "./types";
 
 const FONDOS_HTML = `
 <html>
@@ -194,7 +195,7 @@ const MOVIMIENTOS_CUENTA_HTML = `
 </html>`;
 
 describe("parseMyInvestorHtml (Cuenta > Corriente > Movimientos 7-column variant)", () => {
-  it("parses the 7-column movimientos table, ignoring the Cargo/Abono and Saldo columns", () => {
+  it("parses the 7-column movimientos table, ignoring Cargo/Abono and keeping Saldo only as row identity", () => {
     const result = parseMyInvestorHtml(MOVIMIENTOS_CUENTA_HTML);
     expect(result.kind).toBe("movimientos");
     if (result.kind !== "movimientos") throw new Error("expected movimientos");
@@ -206,6 +207,7 @@ describe("parseMyInvestorHtml (Cuenta > Corriente > Movimientos 7-column variant
       concepto: "SAMPLE WORLD INDEX FUND",
       divisa: "EUR",
       importe: "-53,71",
+      saldo: "46,29",
     });
   });
 
@@ -238,5 +240,32 @@ describe("describeUnknownFormat", () => {
     expect(summary).toContain("(no <title> found)");
     expect(summary).toContain("(none found)");
     expect(summary).toContain("no <tr> with <td> cells found");
+  });
+});
+
+describe("mergeMovimientosFiles", () => {
+  const row = (overrides: Partial<MovimientosRow>): MovimientosRow => ({
+    fechaOperacion: "2026-02-01",
+    fechaValor: "2026-02-01",
+    tipo: "TRANSFERENCIA SEPA",
+    concepto: "Monthly savings",
+    divisa: "EUR",
+    importe: "+50,00",
+    ...overrides,
+  });
+
+  it("keeps a row only once when two overlapping exports both contain it", () => {
+    const shared = row({});
+    const merged = mergeMovimientosFiles([[shared, row({ concepto: "older" })], [{ ...shared }, row({ concepto: "newer" })]]);
+    expect(merged.map((r) => r.concepto)).toEqual(["Monthly savings", "older", "newer"]);
+  });
+
+  it("keeps genuinely repeated rows within one export (identical same-day transfers)", () => {
+    const merged = mergeMovimientosFiles([[row({}), row({})], [row({})]]);
+    expect(merged).toHaveLength(2);
+  });
+
+  it("tells otherwise-identical rows apart by their running Saldo", () => {
+    expect(movimientosRowKey(row({ saldo: "100,00" }))).not.toBe(movimientosRowKey(row({ saldo: "150,00" })));
   });
 });

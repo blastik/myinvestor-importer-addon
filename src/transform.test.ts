@@ -160,6 +160,56 @@ describe("SUSCRIPCION / REEMBOLSO (matched buy/sell)", () => {
   });
 });
 
+describe("movimientos [ref:...] tags are content-based", () => {
+  const deposit = movRow({ tipo: "TRANSFERENCIA SEPA", concepto: "Monthly savings", importe: "+50,00", fechaValor: "2026-01-06" });
+  const fee = movRow({ tipo: "COMISION CUSTODIA MYINVESTOR", concepto: "EFECTIVO-EUR @ 0", importe: "-2,48" });
+
+  const refFor = (rows: MovimientosRow[], concepto: string) =>
+    transform([], rows, CONFIG).activities.find((a) => a.comment?.startsWith(concepto))?.comment?.match(/\[ref:(.+)\]$/)?.[1];
+
+  it("gives a row the same ref regardless of its position or what other rows were uploaded", () => {
+    // Refs used to be the row's index in the uploaded file(s), so
+    // re-importing with a different file set renamed every cash activity and
+    // Wealthfolio imported all of them a second time.
+    const alone = refFor([deposit], "Monthly savings");
+    const afterOthers = refFor([fee, movRow({ tipo: "LIQUIDAC. INTERESES", concepto: "PERIODO", importe: "+0,02" }), deposit], "Monthly savings");
+    expect(alone).toBeDefined();
+    expect(afterOthers).toBe(alone);
+  });
+
+  it("still gives identical same-day rows distinct refs", () => {
+    const { activities } = transform([], [deposit, { ...deposit }], CONFIG);
+    expect(activities).toHaveLength(2);
+    expect(activities[0].comment).not.toBe(activities[1].comment);
+  });
+});
+
+describe("fund-name fallback rejects implausible cash amounts", () => {
+  it("doesn't pair a trade with a different fund's cash row just because the names share generic words", () => {
+    // The trade's own cash row is missing (e.g. the movimientos export ends
+    // partway through the day); another fund's debit on the same date shares
+    // "INDEX"/"P"/"ACC"/"EUR" but is nowhere near shares × price.
+    const fondos = fondosRow({
+      fechaLiquidacion: "2026-03-04",
+      nombre: "SAMPLE WORLD INDEX P ACC EUR",
+      titulos: "5.00000000",
+      precio: "10.0000000",
+      importe: "50.00",
+    });
+    const wrongFund = movRow({ fechaValor: "2026-03-04", concepto: "OTHER REGION INDEX P ACC EUR", importe: "-12,00" });
+    const { activities, skipped } = transform([fondos], [wrongFund], CONFIG);
+    expect(activities.filter((a) => a.activityType === "BUY")).toHaveLength(0);
+    expect(skipped.some((s) => s.reason.includes("No matching cash movement"))).toBe(true);
+  });
+
+  it("still matches by name when the amount is consistent with shares × price", () => {
+    const fondos = fondosRow({ fechaLiquidacion: "2026-03-04", nombre: "SAMPLE WORLD INDEX P ACC EUR", titulos: "5.00000000", precio: "10.0000000" });
+    const own = movRow({ fechaValor: "2026-03-04", concepto: "SAMPLE WORLD INDEX P ACC EUR", importe: "-50,01" });
+    const { activities } = transform([fondos], [own], CONFIG);
+    expect(activities.filter((a) => a.activityType === "BUY")).toHaveLength(1);
+  });
+});
+
 describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by construction", () => {
   // BUY/SELL never touch net_contribution and never sweep cash from a
   // separate account, so simply not funding these from movimientos already
