@@ -32,7 +32,16 @@ function AccountSelect({
   onChange: (v: string) => void;
 }) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    // `items` lets Base UI's SelectValue (Wealthfolio ≥ 3.11 hosts) show the
+    // account name instead of its raw id; older Radix-based hosts ignore it.
+    // onValueChange can receive null under Base UI — ignore that.
+    <Select
+      value={value}
+      items={accounts.map((a) => ({ value: a.id, label: `${a.name} (${a.currency})` }))}
+      onValueChange={(v) => {
+        if (v != null) onChange(v);
+      }}
+    >
       <SelectTrigger className="w-full">
         <SelectValue placeholder="Select account…" />
       </SelectTrigger>
