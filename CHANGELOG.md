@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.5.2] - 2026-11-02
+
+### Fixed
+
+- Settings: on Wealthfolio 3.11 and newer, the account picker showed the selected account's internal id instead of its name. It now shows the name. Older hosts are unaffected.
+
+### Changed
+
+- Built and tested against `@wealthfolio/addon-sdk`/`@wealthfolio/ui` 3.12.0 (the UI kit moved from Radix to Base UI in 3.11). The minimum Wealthfolio version stays 3.9.0.
+
 ## [1.5.1] - 2026-10-05
 
 ### Fixed
