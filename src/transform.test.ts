@@ -210,11 +210,10 @@ describe("fund-name fallback rejects implausible cash amounts", () => {
   });
 });
 
-describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by construction", () => {
-  // BUY/SELL never touch net_contribution and never sweep cash from a
-  // separate account, so simply not funding these from movimientos already
-  // makes them cash-neutral in practice — no special-casing needed, unlike
-  // the earlier TRANSFER_IN/TRANSFER_OUT model.
+describe("fund switches (traspasos) that can't be conversions fall back to BUY/SELL", () => {
+  // Every case here is a lone leg (or, below, a pair whose leaving fund this
+  // import doesn't show as held), so it can't be a conversion and keeps the
+  // pre-conversion BUY/SELL model. BUY/SELL never touch net_contribution.
   it("SUSCR.POR TRASPASO I becomes BUY with zero fee", () => {
     const fondos = fondosRow({ operacion: "SUSCR.POR TRASPASO I" });
     const { activities, skipped } = transform([fondos], [], CONFIG);
@@ -245,15 +244,20 @@ describe("fund switches (traspasos) — modeled as BUY/SELL, cash-neutral by con
     expect(sell.unitPrice).toBe("11.6260000");
   });
 
-  it("ALTA/BAJA IIC SWITCH map to BUY/SELL independently (no shared group, no pairing needed)", () => {
+  it("demotes a balanced ALTA/BAJA pair to BUY/SELL when the leaving fund isn't held in this import", () => {
     const alta = fondosRow({ operacion: "ALTA IIC SWITCH", numOperacion: "1" });
     const baja = fondosRow({ operacion: "BAJA IIC SWITCH", numOperacion: "2", isin: "IE00OTHER0001" });
-    const { activities } = transform([alta, baja], [], CONFIG);
-    expect(activities).toHaveLength(2);
-    const buy = activities.find((a) => a.activityType === "BUY")!;
-    const sell = activities.find((a) => a.activityType === "SELL")!;
-    expect(buy).toBeDefined();
-    expect(sell).toBeDefined();
+    const { activities, conversionWarnings, conversionBatches } = transform([alta, baja], [], CONFIG);
+    expect(activities.map((a) => a.activityType).sort()).toEqual(["BUY", "SELL"]);
+    expect(conversionBatches).toHaveLength(0);
+    expect(conversionWarnings).toHaveLength(2);
+    expect(conversionWarnings[0].reason).toMatch(/holds only 0 units/);
+  });
+
+  it("warns that a lone switch leg was imported as BUY/SELL", () => {
+    const { conversionWarnings } = transform([fondosRow({ operacion: "SUSCR.POR TRASPASO I" })], [], CONFIG);
+    expect(conversionWarnings).toHaveLength(1);
+    expect(conversionWarnings[0].reason).toMatch(/no opposite switch leg/);
   });
 
   it("does NOT try to match traspaso/switch rows against movimientos", () => {
@@ -627,5 +631,91 @@ describe("cross-addon transfer dedup", () => {
     );
     expect(duplicates).toHaveLength(1);
     expect(duplicates[0].reason).not.toMatch(/real duplicate/i);
+  });
+});
+
+describe("fund switches (traspasos) as conversions", () => {
+  // A held position in the leaving fund: a matched SUSCRIPCION of 10 units.
+  const seed = [
+    fondosRow({ numOperacion: "100", isin: "IE00AAAAAAA1", nombre: "FUND A EUR", titulos: "10.00000000", precio: "10.0000000", importe: "100.00", fechaOperacion: "2026-01-02", fechaLiquidacion: "2026-01-05" }),
+  ];
+  const seedCash = [movRow({ fechaValor: "2026-01-05", concepto: "FUND A EUR @ 10", importe: "-100,00" })];
+
+  it("turns a balanced 1:1 EUR switch into one CONVERSION_OUT/IN pair dated on the arrival day", () => {
+    const baja = fondosRow({ numOperacion: "200", operacion: "REEMB.POR TRASPASO I", isin: "IE00AAAAAAA1", nombre: "FUND A EUR", titulos: "10.00000000", precio: "12.0000000", importe: "120.00", fechaOperacion: "2026-03-02", fechaLiquidacion: "2026-03-04" });
+    const alta = fondosRow({ numOperacion: "201", operacion: "SUSCR.POR TRASPASO I", isin: "IE00BBBBBBB2", nombre: "FUND B EUR", titulos: "6.00000000", precio: "20.0000000", importe: "120.00", fechaOperacion: "2026-03-05", fechaLiquidacion: "2026-03-09" });
+    const { activities, conversionWarnings, conversionBatches } = transform([...seed, baja, alta], seedCash, CONFIG);
+    expect(conversionWarnings).toHaveLength(0);
+    const conv = activities.filter((a) => a.activityType === "ADJUSTMENT");
+    expect(conv).toHaveLength(2);
+    const [out, inn] = conv;
+    expect(out.subtype).toBe("CONVERSION_OUT");
+    expect(inn.subtype).toBe("CONVERSION_IN");
+    expect(out.symbol).toBe("IE00AAAAAAA1");
+    expect(inn.symbol).toBe("IE00BBBBBBB2");
+    expect(out.quantity).toBe("10");
+    expect(inn.quantity).toBe("6");
+    expect(out.sourceGroupId).toBe("myinvestor:c200>201");
+    expect(inn.sourceGroupId).toBe(out.sourceGroupId);
+    expect(String(out.date).slice(0, 10)).toBe("2026-03-05");
+    expect(String(inn.date).slice(0, 10)).toBe("2026-03-05");
+    for (const a of conv) {
+      expect(a.unitPrice).toBeUndefined();
+      expect(a.amount).toBeUndefined();
+      expect(a.fee).toBeUndefined();
+      expect(a.fxRate).toBeUndefined();
+      expect(a.comment).toMatch(/\[ref:c200>201\]$/);
+    }
+    // No BUY/SELL for the switch legs themselves.
+    expect(activities.filter((a) => a.comment?.includes("traspaso") && a.activityType !== "ADJUSTMENT")).toHaveLength(0);
+    expect(conversionBatches).toEqual([
+      { id: "c200>201", refs: ["c200>201"], legNumOps: ["200", "201"], lineNumbers: [2, 3] },
+    ]);
+  });
+
+  it("chains a later switch out of a fund that only arrived through an earlier conversion", () => {
+    const legs = [
+      fondosRow({ numOperacion: "200", operacion: "BAJA IIC SWITCH", isin: "IE00AAAAAAA1", titulos: "10.00000000", importe: "120.00", fechaOperacion: "2026-03-02" }),
+      fondosRow({ numOperacion: "201", operacion: "ALTA IIC SWITCH", isin: "IE00BBBBBBB2", titulos: "6.00000000", importe: "120.00", fechaOperacion: "2026-03-03" }),
+      fondosRow({ numOperacion: "300", operacion: "BAJA IIC SWITCH", isin: "IE00BBBBBBB2", titulos: "6.00000000", importe: "130.00", fechaOperacion: "2026-05-02" }),
+      fondosRow({ numOperacion: "301", operacion: "ALTA IIC SWITCH", isin: "IE00CCCCCCC3", titulos: "13.00000000", importe: "130.00", fechaOperacion: "2026-05-03" }),
+    ];
+    const { conversionWarnings, conversionBatches } = transform([...seed, ...legs], seedCash, CONFIG);
+    expect(conversionWarnings).toHaveLength(0);
+    expect(conversionBatches.map((b) => b.id)).toEqual(["c200>201", "c300>301"]);
+  });
+
+  it("demotes the whole batch (and only that batch) when its leaving units exceed what is held", () => {
+    const legs = [
+      // 12 units leave, only 10 are held.
+      fondosRow({ numOperacion: "200", operacion: "BAJA IIC SWITCH", isin: "IE00AAAAAAA1", titulos: "12.00000000", importe: "120.00", fechaOperacion: "2026-03-02" }),
+      fondosRow({ numOperacion: "201", operacion: "ALTA IIC SWITCH", isin: "IE00BBBBBBB2", titulos: "6.00000000", importe: "120.00", fechaOperacion: "2026-03-03" }),
+      // Then the arriving fund is switched on: it still holds 6 units via the
+      // demoted BUY, so this batch stays a conversion.
+      fondosRow({ numOperacion: "300", operacion: "BAJA IIC SWITCH", isin: "IE00BBBBBBB2", titulos: "6.00000000", importe: "130.00", fechaOperacion: "2026-05-02" }),
+      fondosRow({ numOperacion: "301", operacion: "ALTA IIC SWITCH", isin: "IE00CCCCCCC3", titulos: "13.00000000", importe: "130.00", fechaOperacion: "2026-05-03" }),
+    ];
+    const { activities, conversionWarnings, conversionBatches } = transform([...seed, ...legs], seedCash, CONFIG);
+    expect(conversionBatches.map((b) => b.id)).toEqual(["c300>301"]);
+    expect(conversionWarnings).toHaveLength(2);
+    expect(activities.filter((a) => a.comment?.includes("[ref:000000000200]"))[0].activityType).toBe("SELL");
+    expect(activities.filter((a) => a.comment?.includes("[ref:000000000201]"))[0].activityType).toBe("BUY");
+  });
+
+  it("keeps a cross-currency switch as BUY/SELL with its fxRate", () => {
+    const legs = [
+      fondosRow({ numOperacion: "200", operacion: "BAJA IIC SWITCH", isin: "IE00AAAAAAA1", titulos: "10.00000000", importe: "100.00", fechaOperacion: "2026-03-02", fechaLiquidacion: "2026-03-04" }),
+      fondosRow({ numOperacion: "201", operacion: "ALTA IIC SWITCH", isin: "IE00USDUSD01", divisa: "USD", titulos: "5.00000000", importe: "110.00", fechaOperacion: "2026-03-03", fechaLiquidacion: "2026-03-05" }),
+    ];
+    const fxRates = { [fxRateKey("USD", "2026-03-05")]: 0.91 };
+    const { activities, conversionWarnings, conversionBatches } = transform([...seed, ...legs], seedCash, CONFIG, [], [], fxRates);
+    expect(conversionBatches).toHaveLength(0);
+    expect(conversionWarnings.map((w) => w.reason)).toEqual([
+      expect.stringMatching(/different currencies \(EUR\/USD\)/),
+      expect.stringMatching(/different currencies \(EUR\/USD\)/),
+    ]);
+    const buy = activities.find((a) => a.symbol === "IE00USDUSD01")!;
+    expect(buy.activityType).toBe("BUY");
+    expect(buy.fxRate).toBe("0.91");
   });
 });

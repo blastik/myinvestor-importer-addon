@@ -30,6 +30,10 @@ exist here.
 
 ## Setup
 
+Requires **Wealthfolio 3.12.0 or newer** on every device that uses the
+account: older versions ignore fund conversions, so their holdings would be
+wrong.
+
 1. Install the addon:
    - Download the `myinvestor-importer-addon.zip` asset from the
      [latest release](https://github.com/blastik/myinvestor-importer-addon/releases/latest)
@@ -58,8 +62,7 @@ a smaller/less accurate picture — see below.
 | --- | --- |
 | `SUSCRIPCION` (fondos) + `SUSCRIPCION IIC` (movimientos), joined by settlement date + share count when the movimientos export includes one (see "Two movimientos export shapes" below) | `BUY` |
 | `REEMBOLSO` (fondos) + `REEMBOLSO IIC` (movimientos) | `SELL` |
-| `SUSCR.POR TRASPASO I` / `ALTA IIC SWITCH` (fondos only — no cash impact) | `BUY` at switch-day price (non-EUR funds get a historical `fxRate`, see below) |
-| `REEMB.POR TRASPASO I` / `BAJA IIC SWITCH` (fondos only — no cash impact) | `SELL` at switch-day price (non-EUR funds get a historical `fxRate`, see below) |
+| `REEMB.POR TRASPASO I` / `BAJA IIC SWITCH` + `SUSCR.POR TRASPASO I` / `ALTA IIC SWITCH` (fondos only — no cash impact) | Fund conversion: `ADJUSTMENT` `CONVERSION_OUT` + `CONVERSION_IN` pairs, carried at cost (see below). Falls back to `SELL` + `BUY` at switch-day price when a switch can't be converted |
 | `COMPRA RV CONTADO SF` / `COMPRA RV CONTADO` (movimientos) | `BUY` (symbol/quantity parsed from concept, EUR unit price derived from amount/quantity) |
 | `VENTA DE VALORES` (movimientos) | `SELL` (symbol/quantity parsed from concept, EUR unit price derived from amount/quantity) |
 | `COMPRA RF VCTO` (movimientos) | `BUY` bond |
@@ -94,38 +97,74 @@ created by an earlier import that ran before the matching `TRANSFER_IN`
 existed, there was nothing to catch it at the time. Every import re-scans the
 full movimientos history, though, so once both activities exist, that's
 detected too and flagged (with both activity ids) as a confirmed duplicate
-for you to delete manually — the addon has no way to delete activities
-itself.
+for you to delete manually — the addon doesn't delete activities on a
+heuristic amount/date match. (The only activities it ever deletes are
+fund-switch `SELL`/`BUY` it created itself, identified by the broker's
+operation number, when replacing them with conversions.)
 
-## Fund switches (traspasos) are recorded as SELL + BUY
+## Fund switches (traspasos) are recorded as fund conversions
 
 In Spain, switching directly from one fund to another is tax-deferred — no
-capital gain is realized for tax purposes. An earlier version of this addon
-modeled that literally, using `TRANSFER_OUT` (old fund) + `TRANSFER_IN` (new
-fund) instead of `SELL`/`BUY`, specifically to avoid showing a phantom
-realized gain. That turned out to have a worse problem: Wealthfolio always
-adds a `TRANSFER_IN`'s value to the account's `net_contribution` ("invested")
-figure, regardless of pairing — treating every switch fragment as if it were
-fresh external money. Since a fund switch has many more incoming fragments
-than outgoing ones (MyInvestor splits redemptions into several receiving
-fragments), this inflated `net_contribution` by the cumulative embedded gain
-of every switched fund — silently and by a material amount over time.
+capital gain is realized. Wealthfolio 3.12 can record exactly that: a **fund
+conversion** is two `ADJUSTMENT` rows (`CONVERSION_OUT` for the fund that
+leaves, `CONVERSION_IN` for the fund that arrives) linked by a shared group
+id. The arriving units take over the leaving lots at cost, and no cash,
+contribution or realized gain is booked.
 
-Grouping the legs with a shared transfer id doesn't safely fix this either: a
-grouped `TRANSFER_IN` reattaches the paired `TRANSFER_OUT`'s cached lots
-verbatim, which for a cross-asset switch (a genuinely different fund) would
-give the new fund the *old* fund's quantity and cost basis instead of its
-own.
+Wealthfolio pairs a conversion only when it is exactly one fund out and one
+fund in, on **one day**, in **one currency**. MyInvestor's switches don't come
+that way: the leaving fund is redeemed first and the new fund's units arrive
+a few days later, often in several fragments, sometimes funded by more than
+one fund. The export has no reference linking the legs, so the addon matches
+them itself:
 
-`SELL`/`BUY` never touch `net_contribution` and need no pairing, so switches
-are now recorded as an ordinary `SELL` (old fund) + `BUY` (new fund) at the
-switch-day price. The trade-off: each switch now shows as a real (though
-non-taxable-in-Spain) realized gain/loss in Wealthfolio's performance/tax
-reports.
+1. **Batches**: switch legs are walked in date order and grouped until the
+   value that left (the broker's "Importe neto") equals the value that
+   arrived, within a few cents. A leg with no counterpart within 10 days
+   (e.g. a traspaso from another bank, or an export that ends mid-switch) is
+   left on its own.
+2. **Conversions**: each batch becomes one conversion per (leaving fund,
+   arriving fund, arrival day), dated on the arrival day. When several funds
+   leave or several fragments arrive, units are split in proportion to value,
+   and every unit is used exactly once.
+3. **Check**: the addon replays the import's fund activities and keeps a
+   switch as a conversion only if the leaving fund is actually held at that
+   point. Wealthfolio would otherwise reject the pair after the import.
+
+Switches that can't be converted keep the previous behaviour, `SELL` (old
+fund) + `BUY` (new fund) at switch-day price, and are listed under **Switches
+as BUY/SELL** with the reason. This applies to:
+
+- **switches between a EUR and a USD fund**, which Wealthfolio conversions
+  don't support yet;
+- legs with no counterpart;
+- switches out of a fund this import doesn't show as held. Upload your full
+  fondos history to convert those.
+
+**Upgrading from an earlier version:** switches imported before as `SELL` +
+`BUY` are found by their operation number. The review step says how many
+will be replaced, and the import deletes them in the same step that creates
+the conversions, so nothing is counted twice. Click **Keep old activities**
+to leave them as they are instead. Re-importing the same files later finds
+the conversions already there and changes nothing.
+
+**Cost basis:** the leaving fund's units are taken by the account's
+cost-basis method. Spanish tax rules take the oldest units first, so set the
+MyInvestor account to **FIFO** in Wealthfolio for the conversions to match
+your tax records.
+
+### History: why not TRANSFER_IN/OUT
+
+An earlier version used `TRANSFER_OUT` + `TRANSFER_IN`. Wealthfolio adds a
+`TRANSFER_IN`'s value to `net_contribution` ("invested"), so every switch
+looked like fresh money. Grouping the legs copies the old fund's lots onto
+the new fund verbatim, which is wrong for a different fund. Plain `SELL` +
+`BUY` fixed both problems, at the cost of a phantom realized gain/loss per
+switch. Conversions remove that cost.
 
 ### Non-EUR fund switches
 
-A traspaso never touches movimientos, so unlike `SUSCRIPCION`/`REEMBOLSO`
+These stay `SELL` + `BUY` (see above). A traspaso never touches movimientos, so unlike `SUSCRIPCION`/`REEMBOLSO`
 (which derive their `fxRate` from a matched cash amount — see "USD-denominated
 funds" below) there's no cash movement to derive a conversion rate from for a
 non-EUR-denominated switch. Before transforming, the addon collects every
@@ -194,7 +233,8 @@ holding/position.
 - **Only movimientos**: fee/interest/deposit/tax rows import fine.
   `SUSCRIPCION IIC`/`REEMBOLSO IIC` rows have no fund detail (ISIN/quantity)
   and are skipped, listed under "Unsupported" for review.
-- **Only fondos**: fund switches import fine (they never needed cash detail).
+- **Only fondos**: fund switches import fine (they never needed cash detail),
+  as conversions where possible.
   Plain `SUSCRIPCION`/`REEMBOLSO` rows still import as `BUY`/`SELL`, but
   without a verified EUR cash tie-out (no `fxRate`, native-currency booking).
 

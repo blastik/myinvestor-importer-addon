@@ -1,6 +1,7 @@
 import type { ActivityImport } from "@wealthfolio/addon-sdk";
 import type {
   AddonSettings,
+  ConversionBatchInfo,
   ExistingCashTransferIn,
   ExistingDeposit,
   FondosRow,
@@ -9,6 +10,19 @@ import type {
   TransformResult,
 } from "./types";
 import { fondosNum, movimientosNum, movimientosRowKey } from "./parseFiles";
+import {
+  BATCH_WINDOW_DAYS,
+  CONVERSION_GROUP_PREFIX,
+  allocateBatch,
+  batchCurrencyIssue,
+  batchLegs,
+  conversionRef,
+  legValue,
+  normalizeNumOp,
+  traspasoDirection,
+  type PlannedConversion,
+  type TraspasoLeg,
+} from "./conversions";
 
 // A bank transfer recorded in movimientos and a cross-addon TRANSFER_IN (or
 // an already-imported DEPOSIT from an earlier run of this addon) are
@@ -77,6 +91,12 @@ interface Draft {
   day: string;
   orderHint: string;
   activity: ActivityImport;
+  // Index of the switch batch a conversion row belongs to (planTraspasos).
+  batch?: number;
+}
+
+function sortDrafts(drafts: Draft[]): void {
+  drafts.sort((a, b) => (a.day === b.day ? a.orderHint.localeCompare(b.orderHint) : a.day.localeCompare(b.day)));
 }
 
 // Trailing "@ 0.855" in a movimientos concepto is the fund's share count for
@@ -259,6 +279,219 @@ function findCashMatch(
   return winners.length === 1 ? winners[0].c : undefined;
 }
 
+// A switch leg booked as a plain BUY/SELL at the switch-day price: the
+// fallback for legs that can't be part of a conversion (see planTraspasos).
+//
+// History: switches were first TRANSFER_IN/TRANSFER_OUT (inflated
+// net_contribution — TRANSFER_IN adds its value unconditionally; grouping
+// them would graft the old fund's lots onto the new one), then BUY/SELL for
+// every switch (correct holdings and net_contribution, but a phantom
+// realized gain/loss per switch, though traspasos are tax-deferred in
+// Spain). Wealthfolio 3.12 conversions fix that last part; BUY/SELL remains
+// for what they can't express yet. See CLAUDE.md before changing this.
+//
+// A non-EUR leg also needs an explicit fxRate (traspasoFxRate) — without it
+// Wealthfolio books cash into a separate, never-funded currency bucket
+// instead of the account's real EUR cash.
+function traspasoTradeDraft(
+  r: FondosRow,
+  accountId: string,
+  fxRates: Record<string, number>,
+  fxRateWarnings: SkippedRow[],
+): Draft {
+  const isIn = traspasoDirection(r.operacion) === "in";
+  return {
+    day: r.fechaOperacion,
+    orderHint: r.numOperacion.trim().padStart(12, "0"),
+    activity: {
+      accountId,
+      activityType: isIn ? "BUY" : "SELL",
+      symbol: r.isin,
+      symbolName: r.nombre,
+      instrumentType: "FUND",
+      quoteCcy: r.divisa,
+      quantity: r.titulos,
+      unitPrice: traspasoUnitPrice(r),
+      fee: "0",
+      currency: r.divisa,
+      fxRate: traspasoFxRate(r, fxRates, fxRateWarnings),
+      comment: `${r.nombre} - fund switch (traspaso) ${isIn ? "in" : "out"}`,
+      isValid: true,
+      isDraft: false,
+    },
+  };
+}
+
+// The two rows of one conversion. Both are dated on the arrival day
+// (Wealthfolio pairs them only on one business day) and carry units only:
+// no price, amount, fee or fxRate. The "c" orderHint sorts them after
+// same-day fondos trades (numeric hints) and before cash rows ("z"), and the
+// stable sort keeps OUT and IN adjacent.
+function conversionDrafts(p: PlannedConversion, accountId: string, batch: number): Draft[] {
+  const sourceGroupId = CONVERSION_GROUP_PREFIX + p.ref;
+  const label = `${p.outRow.nombre} → ${p.inRow.nombre} - fund switch (traspaso)`;
+  const row = (dir: "out" | "in"): Draft => {
+    const r = dir === "out" ? p.outRow : p.inRow;
+    return {
+      day: p.day,
+      orderHint: p.ref,
+      batch,
+      activity: {
+        accountId,
+        activityType: "ADJUSTMENT",
+        subtype: dir === "out" ? "CONVERSION_OUT" : "CONVERSION_IN",
+        symbol: r.isin,
+        symbolName: r.nombre,
+        instrumentType: "FUND",
+        quoteCcy: r.divisa,
+        quantity: dir === "out" ? p.outUnits : p.inUnits,
+        currency: r.divisa,
+        sourceGroupId,
+        comment: `${label} ${dir}`,
+        isValid: true,
+        isDraft: false,
+      },
+    };
+  };
+  return [row("out"), row("in")];
+}
+
+// Replays every fund activity in final order, per symbol, and returns the
+// batches with a conversion whose leaving units exceed what is held at that
+// point. Wealthfolio rejects such a pair as a whole — and the fund it would
+// have credited is then missing for the next switch out of it, so one bad
+// pair cascades — and only reports it in Health after the import. Demoting
+// the batch to BUY/SELL here keeps holdings right instead.
+function unitShortfalls(sorted: Draft[]): Map<number, string> {
+  const held = new Map<string, number>();
+  const failures = new Map<number, string>();
+  for (const d of sorted) {
+    const a = d.activity;
+    if (!a.symbol || a.symbol === CASH_SYMBOL) continue;
+    const qty = parseFloat(String(a.quantity ?? "0"));
+    if (!Number.isFinite(qty)) continue;
+    const current = held.get(a.symbol) ?? 0;
+    if (a.activityType === "BUY" || a.subtype === "CONVERSION_IN") {
+      held.set(a.symbol, current + qty);
+    } else if (a.activityType === "SELL") {
+      held.set(a.symbol, current - qty);
+    } else if (a.subtype === "CONVERSION_OUT") {
+      if (current + 1e-6 < qty && d.batch != null && !failures.has(d.batch)) {
+        failures.set(
+          d.batch,
+          `the uploaded history holds only ${fmtAmt(Math.max(current, 0))} units of ${a.symbolName ?? a.symbol} on ` +
+            `${d.day}, fewer than the ${fmtAmt(qty)} this switch moves out — upload the full fondos history to convert it`,
+        );
+      }
+      held.set(a.symbol, current - qty);
+    }
+  }
+  return failures;
+}
+
+interface TraspasoPlan {
+  drafts: Draft[];
+  fxRateWarnings: SkippedRow[];
+  warnings: SkippedRow[];
+  batches: (Omit<ConversionBatchInfo, "lineNumbers"> & { index: number })[];
+}
+
+// Turns the fondos switch legs into conversions where Wealthfolio can pair
+// them, and BUY/SELL (traspasoTradeDraft) where it can't: legs that don't
+// balance against an opposite leg within BATCH_WINDOW_DAYS, cross-currency
+// switches, and batches whose leaving units this import doesn't show as held
+// (unitShortfalls). See conversions.ts for the batching and allocation rules.
+function planTraspasos(
+  rows: FondosRow[],
+  otherDrafts: Draft[],
+  accountId: string,
+  fxRates: Record<string, number>,
+): TraspasoPlan {
+  const legs: TraspasoLeg[] = rows.map((row) => ({
+    row,
+    dir: traspasoDirection(row.operacion)!,
+    numOp: normalizeNumOp(row.numOperacion),
+    value: legValue(row, fxRates[fxRateKey(row.divisa, row.fechaLiquidacion)]),
+  }));
+  const { batches, released } = batchLegs(legs);
+
+  const demoted = new Map<number, string>();
+  const plans = batches.map((b, i) => {
+    const currencyIssue = batchCurrencyIssue(b);
+    if (currencyIssue) {
+      demoted.set(i, currencyIssue);
+      return [];
+    }
+    const planned = allocateBatch(b);
+    if (typeof planned === "string") {
+      demoted.set(i, planned);
+      return [];
+    }
+    return planned;
+  });
+
+  for (;;) {
+    const fxRateWarnings: SkippedRow[] = [];
+    const drafts: Draft[] = [];
+    for (const leg of released) drafts.push(traspasoTradeDraft(leg.row, accountId, fxRates, fxRateWarnings));
+    batches.forEach((b, i) => {
+      if (demoted.has(i)) {
+        for (const leg of b) drafts.push(traspasoTradeDraft(leg.row, accountId, fxRates, fxRateWarnings));
+      } else {
+        for (const p of plans[i]) drafts.push(...conversionDrafts(p, accountId, i));
+      }
+    });
+
+    const all = [...otherDrafts, ...drafts];
+    sortDrafts(all);
+    const failures = unitShortfalls(all);
+    if (failures.size > 0) {
+      for (const [i, reason] of failures) demoted.set(i, reason);
+      continue;
+    }
+
+    const legWarning = (leg: TraspasoLeg, reason: string): SkippedRow => ({
+      date: leg.row.fechaOperacion,
+      source: "fondos",
+      type: leg.row.operacion,
+      description: `${leg.row.nombre} (${leg.row.isin})`,
+      reason: `Imported as ${leg.dir === "in" ? "BUY" : "SELL"} instead of a fund conversion: ${reason}`,
+    });
+    const warnings = [
+      ...released.map((leg) =>
+        legWarning(
+          leg,
+          leg.value == null
+            ? `no ${leg.row.divisa}→EUR exchange rate to match it against its opposite switch leg`
+            : `no opposite switch leg balances it within ${BATCH_WINDOW_DAYS} days (e.g. a traspaso from/to another bank, or an export that starts/ends mid-switch)`,
+        ),
+      ),
+      ...batches.flatMap((b, i) => (demoted.has(i) ? b.map((leg) => legWarning(leg, demoted.get(i)!)) : [])),
+    ].sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      drafts,
+      fxRateWarnings,
+      warnings,
+      batches: batches.flatMap((b, i) =>
+        demoted.has(i)
+          ? []
+          : [
+              {
+                index: i,
+                id: conversionRef(
+                  b.filter((l) => l.dir === "out").map((l) => l.numOp),
+                  b.filter((l) => l.dir === "in").map((l) => l.numOp),
+                ),
+                refs: plans[i].map((p) => p.ref),
+                legNumOps: b.map((l) => l.numOp),
+              },
+            ],
+      ),
+    };
+  }
+}
+
 export function transform(
   fondosRows: FondosRow[],
   movimientosRows: MovimientosRow[],
@@ -274,6 +507,7 @@ export function transform(
   const fxRateWarnings: SkippedRow[] = [];
 
   const cashPool = movimientosRows.map((row, index) => ({ row, index, consumed: false }));
+  const traspasoRows: FondosRow[] = [];
 
   for (const r of fondosRows) {
     const titulos = fondosNum(r.titulos);
@@ -349,72 +583,11 @@ export function transform(
       continue;
     }
 
-    // Fund switches (traspasos) are modeled as BUY/SELL at the switch-day
-    // price, not TRANSFER_IN/TRANSFER_OUT. TRANSFER_IN unconditionally adds
-    // its value to Wealthfolio's net_contribution ("invested") figure
-    // regardless of pairing (confirmed in handlers/transfers.rs) — treating
-    // an internal fund-to-fund exchange as if it were fresh external
-    // capital. Pairing via a shared sourceGroupId doesn't fix this safely
-    // either: a grouped TRANSFER_IN reattaches the paired TRANSFER_OUT's
-    // cached Lot objects verbatim, which for a cross-asset switch would
-    // silently give the new fund the OLD fund's quantity/cost-basis instead
-    // of its own. BUY/SELL never touch net_contribution at all (not
-    // referenced in handlers/trades.rs) and need no pairing, so this is the
-    // only option that's both accurate and simple. Trade-off: each switch
-    // shows as a realized gain/loss in performance/tax reports even though
-    // it's not a taxable event in Spain (traspasos are tax-deferred there).
-    //
-    // A non-EUR switch (traspasoFxRate above) additionally needs an explicit
-    // fxRate — same reasoning as the SUSCRIPCION/REEMBOLSO branch, but there
-    // the rate comes from a real historical lookup instead of a matched cash
-    // amount, since a traspaso never touches movimientos. Without it,
-    // Wealthfolio books cash into a separate, never-funded currency bucket
-    // instead of the account's real EUR cash.
-    if (r.operacion === "SUSCR.POR TRASPASO I" || r.operacion === "ALTA IIC SWITCH") {
-      drafts.push({
-        day: r.fechaOperacion,
-        orderHint,
-        activity: {
-          accountId,
-          activityType: "BUY",
-          symbol: r.isin,
-          symbolName: r.nombre,
-          instrumentType,
-          quoteCcy: r.divisa,
-          quantity: r.titulos,
-          unitPrice: traspasoUnitPrice(r),
-          fee: "0",
-          currency: r.divisa,
-          fxRate: traspasoFxRate(r, fxRates, fxRateWarnings),
-          comment: `${r.nombre} - fund switch (traspaso) in`,
-          isValid: true,
-          isDraft: false,
-        },
-      });
-      continue;
-    }
-
-    if (r.operacion === "REEMB.POR TRASPASO I" || r.operacion === "BAJA IIC SWITCH") {
-      drafts.push({
-        day: r.fechaOperacion,
-        orderHint,
-        activity: {
-          accountId,
-          activityType: "SELL",
-          symbol: r.isin,
-          symbolName: r.nombre,
-          instrumentType,
-          quoteCcy: r.divisa,
-          quantity: r.titulos,
-          unitPrice: traspasoUnitPrice(r),
-          fee: "0",
-          currency: r.divisa,
-          fxRate: traspasoFxRate(r, fxRates, fxRateWarnings),
-          comment: `${r.nombre} - fund switch (traspaso) out`,
-          isValid: true,
-          isDraft: false,
-        },
-      });
+    // Fund switches (traspasos) are planned as a whole after this loop (see
+    // planTraspasos): they become conversions where possible, BUY/SELL
+    // otherwise.
+    if (traspasoDirection(r.operacion)) {
+      traspasoRows.push(r);
       continue;
     }
 
@@ -663,8 +836,12 @@ export function transform(
     });
   }
 
+  const traspasos = planTraspasos(traspasoRows, drafts, accountId, fxRates);
+  drafts.push(...traspasos.drafts);
+  fxRateWarnings.push(...traspasos.fxRateWarnings);
+
   // Deterministic same-day ordering: sort by (day, orderHint).
-  drafts.sort((a, b) => (a.day === b.day ? a.orderHint.localeCompare(b.orderHint) : a.day.localeCompare(b.day)));
+  sortDrafts(drafts);
 
   // Wealthfolio's idempotency key hashes account+type+DATE-ONLY (time is
   // discarded)+asset+quantity+unitPrice+amount+fee+currency+description —
@@ -700,5 +877,17 @@ export function transform(
     a.lineNumber = i + 1;
   });
 
-  return { activities, skipped, duplicates, fxRateWarnings };
+  const conversionBatches: ConversionBatchInfo[] = traspasos.batches.map(({ index, ...b }) => ({
+    ...b,
+    lineNumbers: drafts.flatMap((d, i) => (d.batch === index ? [i + 1] : [])),
+  }));
+
+  return {
+    activities,
+    skipped,
+    duplicates,
+    fxRateWarnings,
+    conversionWarnings: traspasos.warnings,
+    conversionBatches,
+  };
 }

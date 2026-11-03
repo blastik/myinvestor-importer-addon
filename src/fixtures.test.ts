@@ -62,7 +62,7 @@ describe("real-export fixtures", () => {
     const fondos = parseMyInvestorHtml(fondosHtml);
     const movimientos = parseMyInvestorHtml(movimientosHtml);
     if (fondos.kind !== "fondos" || movimientos.kind !== "movimientos") throw new Error("wrong kind");
-    expect(fondos.rows).toHaveLength(10);
+    expect(fondos.rows).toHaveLength(15);
     expect(movimientos.rows).toHaveLength(29);
   });
 
@@ -85,7 +85,9 @@ describe("real-export fixtures", () => {
       // amortizacion) + 1 DIVIDEND + 16 cash activities (5 FEE — including
       // the dividend-reversal FEE/REVERSAL — 1 INTEREST, 1 TAX, 1 CREDIT, 3
       // DEPOSIT, 5 WITHDRAWAL).
-      expect(activities).toHaveLength(31);
+      // Plus 8 conversion rows: the August N:M switch (2 leaving funds into
+      // 3 fragments of a new fund over 2 days) as 4 OUT/IN pairs.
+      expect(activities).toHaveLength(39);
       // APERTURA + a genuinely-unmatched fondos SUSCRIPCION (SAMPLE EMERGING
       // MARKETS — no counterpart in this movimientos export at all, by
       // shares or by name) + two genuinely-unmatched movimientos SUSCRIPCION
@@ -235,6 +237,60 @@ describe("real-export fixtures", () => {
       expect(byComment("Sin concepto")?.activityType).toBe("DEPOSIT");
       expect(byComment("SAMPLE SHOP ONLINE")?.activityType).toBe("WITHDRAWAL");
       expect(byComment("Sample Beneficiario Dos")?.activityType).toBe("WITHDRAWAL");
+    });
+  });
+  describe("fund switches as conversions", () => {
+    const fondos = parseMyInvestorHtml(fondosHtml);
+    const movimientos = parseMyInvestorHtml(movimientosHtml);
+    if (fondos.kind !== "fondos" || movimientos.kind !== "movimientos") throw new Error("wrong kind");
+    const { activities, conversionWarnings, conversionBatches } = transform(fondos.rows, movimientos.rows, CONFIG);
+    const conv = activities.filter((a) => a.activityType === "ADJUSTMENT");
+
+    it("splits the August N:M switch into one conversion per (leaving fund, arrival day)", () => {
+      expect(conversionBatches).toHaveLength(1);
+      expect(conversionBatches[0].refs).toEqual([
+        "c300000011>300000013+300000014",
+        "c300000011>300000015",
+        "c300000012>300000013+300000014",
+        "c300000012>300000015",
+      ]);
+      expect(conv).toHaveLength(8);
+      for (const ref of conversionBatches[0].refs) {
+        const pair = conv.filter((a) => a.sourceGroupId === `myinvestor:${ref}`);
+        expect(pair.map((a) => a.subtype)).toEqual(["CONVERSION_OUT", "CONVERSION_IN"]);
+        expect(pair[0].date!.toString().slice(0, 10)).toBe(pair[1].date!.toString().slice(0, 10));
+      }
+    });
+
+    it("moves every leaving and arriving unit exactly once", () => {
+      const units = (subtype: string, isin: string) =>
+        conv
+          .filter((a) => a.subtype === subtype && a.symbol === isin)
+          .reduce((s, a) => s + Number(a.quantity), 0);
+      expect(units("CONVERSION_OUT", "IE00SAMPLE01")).toBeCloseTo(3, 10);
+      expect(units("CONVERSION_OUT", "IE00SAMPLE04")).toBeCloseTo(2, 10);
+      expect(units("CONVERSION_IN", "IE00SAMPLE05")).toBeCloseTo(6, 10);
+      // 36/66 of the 3 units arriving on 08-04 come from IE00SAMPLE01; the
+      // last piece takes the exact remainder.
+      expect(conv.filter((a) => a.subtype === "CONVERSION_IN").map((a) => a.quantity)).toEqual([
+        "1.6363636363",
+        "1.3636363637",
+        "1.6363636363",
+        "1.3636363637",
+      ]);
+    });
+
+    it("keeps the switches it can't convert as BUY/SELL, saying why", () => {
+      // May: SAMPLE EMERGING MARKETS was never held (its only SUSCRIPCION is
+      // unmatched). June: the USD leg has no exchange rate to match on.
+      expect(conversionWarnings.map((w) => [w.date, w.reason.match(/holds only|exchange rate/)?.[0]])).toEqual([
+        ["2026-05-05", "holds only"],
+        ["2026-05-05", "holds only"],
+        ["2026-05-05", "holds only"],
+        ["2026-06-01", undefined],
+        ["2026-06-01", "exchange rate"],
+      ]);
+      expect(activities.filter((a) => a.comment?.includes("fund switch (traspaso)") && a.activityType !== "ADJUSTMENT")).toHaveLength(5);
     });
   });
 });

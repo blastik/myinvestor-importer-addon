@@ -84,6 +84,18 @@ export interface ExistingDeposit {
   amount: number;
 }
 
+// One switch batch imported as conversions (see conversions.ts). The batch,
+// not the single conversion pair, is the unit the import page includes,
+// excludes and writes atomically: its legs are spread across several
+// conversions, so replacing the BUY/SELL activities an earlier import made
+// for those legs only makes sense for the whole batch at once.
+export interface ConversionBatchInfo {
+  id: string;
+  refs: string[]; // conversionRef of each conversion in the batch
+  legNumOps: string[]; // fondos numOperacion (unpadded) of every leg
+  lineNumbers: number[]; // the batch's conversion rows in `activities`
+}
+
 export interface TransformResult {
   activities: ActivityImport[];
   skipped: SkippedRow[];
@@ -102,4 +114,7 @@ export interface TransformResult {
   // landed without a verified EUR conversion and may need a manual fix once
   // a rate becomes available.
   fxRateWarnings: SkippedRow[];
+  // Switch legs imported as BUY/SELL instead of a conversion, and why.
+  conversionWarnings: SkippedRow[];
+  conversionBatches: ConversionBatchInfo[];
 }

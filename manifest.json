@@ -1,16 +1,16 @@
 {
   "id": "myinvestor-importer",
   "name": "MyInvestor Importer",
-  "version": "1.5.2",
-  "description": "Import MyInvestor and Inversis account exports into Wealthfolio. Merges the cuenta corriente and fondos exports into buy/sell/switch/cash activities on a single account.",
+  "version": "2.0.0",
+  "description": "Import MyInvestor and Inversis account exports into Wealthfolio. Merges the cuenta corriente and fondos exports into buy/sell, fund conversion (traspaso) and cash activities on a single account.",
   "author": "blastik",
   "main": "dist/addon.js",
-  "sdkVersion": "3.9.0",
-  "minWealthfolioVersion": "3.9.0",
+  "sdkVersion": "3.12.0",
+  "minWealthfolioVersion": "3.12.0",
   "enabled": true,
   "hostDependencies": {
-    "@wealthfolio/addon-sdk": "^3.9.0",
-    "@wealthfolio/ui": "^3.9.0",
+    "@wealthfolio/addon-sdk": "^3.12.0",
+    "@wealthfolio/ui": "^3.12.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
@@ -26,9 +26,10 @@
         { "name": "getAll", "isDeclared": true, "isDetected": false },
         { "name": "checkImport", "isDeclared": true, "isDetected": false },
         { "name": "create", "isDeclared": true, "isDetected": false },
-        { "name": "update", "isDeclared": true, "isDetected": false }
+        { "name": "update", "isDeclared": true, "isDetected": false },
+        { "name": "saveMany", "isDeclared": true, "isDetected": false }
       ],
-      "purpose": "Validate and import activities parsed from the MyInvestor/Inversis exports; read existing account activities to avoid double-recording money already imported as a cross-account transfer by another addon"
+      "purpose": "Validate and import activities parsed from the MyInvestor/Inversis exports; write fund switches as paired fund conversions, replacing the buy/sell activities an earlier import booked for the same switches; read existing account activities to avoid double-recording money already imported as a cross-account transfer by another addon"
     },
     {
       "category": "assets",
