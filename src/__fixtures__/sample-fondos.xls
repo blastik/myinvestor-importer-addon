@@ -165,6 +165,75 @@
 		<td x:num="15.0000000">15.0000000</td>
 		<td x:num="45.00">45.00</td>
 	  </tr>
+	  <tr>
+		<td align="center">2026-08-03&nbsp;</td>
+		<td align="center">2026-08-05&nbsp;</td>
+		<td> 300000011</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>BAJA IIC SWITCH</td>
+		<td>IE00SAMPLE01</td>
+		<td>SAMPLE WORLD INDEX FUND EUR</td>
+		<td x:num="3.00000000">3.00000000</td>
+		<td>EUR</td>
+		<td x:num="12.0000000">12.0000000</td>
+		<td x:num="36.00">36.00</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-08-03&nbsp;</td>
+		<td align="center">2026-08-05&nbsp;</td>
+		<td> 300000012</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>BAJA IIC SWITCH</td>
+		<td>IE00SAMPLE04</td>
+		<td>SAMPLE JAPAN INDEX FUND EUR</td>
+		<td x:num="2.00000000">2.00000000</td>
+		<td>EUR</td>
+		<td x:num="15.0000000">15.0000000</td>
+		<td x:num="30.00">30.00</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-08-04&nbsp;</td>
+		<td align="center">2026-08-06&nbsp;</td>
+		<td> 300000013</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>ALTA IIC SWITCH</td>
+		<td>IE00SAMPLE05</td>
+		<td>SAMPLE GLOBAL BOND INDEX EUR</td>
+		<td x:num="1.50000000">1.50000000</td>
+		<td>EUR</td>
+		<td x:num="11.0000000">11.0000000</td>
+		<td x:num="16.50">16.50</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-08-04&nbsp;</td>
+		<td align="center">2026-08-06&nbsp;</td>
+		<td> 300000014</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>ALTA IIC SWITCH</td>
+		<td>IE00SAMPLE05</td>
+		<td>SAMPLE GLOBAL BOND INDEX EUR</td>
+		<td x:num="1.50000000">1.50000000</td>
+		<td>EUR</td>
+		<td x:num="11.0000000">11.0000000</td>
+		<td x:num="16.50">16.50</td>
+	  </tr>
+
+	  <tr>
+		<td align="center">2026-08-06&nbsp;</td>
+		<td align="center">2026-08-10&nbsp;</td>
+		<td> 300000015</td>
+		<td>FONDOS EXTRANJEROS</td>
+		<td>ALTA IIC SWITCH</td>
+		<td>IE00SAMPLE05</td>
+		<td>SAMPLE GLOBAL BOND INDEX EUR</td>
+		<td x:num="3.00000000">3.00000000</td>
+		<td>EUR</td>
+		<td x:num="11.0000000">11.0000000</td>
+		<td x:num="33.00">33.00</td>
+	  </tr>
     </table>
 </body>
 </html>

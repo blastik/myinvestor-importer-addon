@@ -1,6 +1,6 @@
 import type { ActivityImport } from "@wealthfolio/addon-sdk";
 import { describe, expect, it } from "vitest";
-import { findExistingMatches } from "./dedup";
+import { findExistingMatches, planConversionBatches } from "./dedup";
 import type { ExistingActivity } from "./dedup";
 
 function imported(lineNumber: number, overrides: Partial<ActivityImport>): ActivityImport {
@@ -97,5 +97,86 @@ describe("findExistingMatches", () => {
       comment: "SAMPLE WORLD INDEX P ACC EUR - SUSCRIPCION [ref:000000000102]",
     });
     expect(findExistingMatches([trade], [wrong]).get(1)).toEqual({ existingId: "bad", differs: true });
+  });
+});
+
+describe("fund switch conversions", () => {
+  const conv = (lineNumber: number, subtype: string, quantity: string, ref = "c200>201") =>
+    imported(lineNumber, {
+      activityType: "ADJUSTMENT",
+      subtype,
+      symbol: subtype === "CONVERSION_OUT" ? "IE00AAAAAAA1" : "IE00BBBBBBB2",
+      quantity,
+      unitPrice: undefined,
+      amount: undefined,
+      sourceGroupId: `myinvestor:${ref}`,
+      comment: `FUND A → FUND B - fund switch (traspaso) ${subtype === "CONVERSION_OUT" ? "out" : "in"} [ref:${ref}]`,
+    });
+  const existingConv = (id: string, subtype: string, quantity: number, ref = "c200>201") =>
+    existing(id, {
+      activityType: "ADJUSTMENT",
+      subtype,
+      quantity,
+      unitPrice: null,
+      amount: null,
+      comment: `FUND A → FUND B - fund switch (traspaso) ${subtype === "CONVERSION_OUT" ? "out" : "in"} [ref:${ref}]`,
+    });
+  const oldTrade = (id: string, activityType: string, numOp: string) =>
+    existing(id, { activityType, quantity: 10, unitPrice: 12, amount: null, comment: `FUND - fund switch (traspaso) [ref:${numOp.padStart(12, "0")}]` });
+  const batch = { id: "c200>201", refs: ["c200>201"], legNumOps: ["200", "201"], lineNumbers: [1, 2] };
+  const rows = [conv(1, "CONVERSION_OUT", "10"), conv(2, "CONVERSION_IN", "6")];
+
+  it("replaces the BUY/SELL an earlier import booked for the batch's legs", () => {
+    const unrelated = oldTrade("t3", "BUY", "999");
+    const [plan] = planConversionBatches([batch], rows, [oldTrade("t1", "SELL", "200"), oldTrade("t2", "BUY", "201"), unrelated]);
+    expect(plan.createLines).toEqual([1, 2]);
+    expect(plan.deleteIds).toEqual(["t1", "t2"]);
+    expect(plan.replacedTrades).toBe(2);
+    expect(plan.existingLines.size).toBe(0);
+  });
+
+  it("recognises an exact re-import and touches nothing", () => {
+    const [plan] = planConversionBatches([batch], rows, [existingConv("o", "CONVERSION_OUT", 10), existingConv("i", "CONVERSION_IN", 6)]);
+    expect(plan.createLines).toEqual([]);
+    expect(plan.deleteIds).toEqual([]);
+    expect([...plan.existingLines]).toEqual([
+      [1, "o"],
+      [2, "i"],
+    ]);
+  });
+
+  it("replaces both rows of a conversion an earlier allocation built from the same legs", () => {
+    const [plan] = planConversionBatches(
+      [batch],
+      rows,
+      [existingConv("o", "CONVERSION_OUT", 10, "c200>201+202"), existingConv("i", "CONVERSION_IN", 7, "c200>201+202")],
+    );
+    expect(plan.createLines).toEqual([1, 2]);
+    expect(plan.deleteIds).toEqual(["i", "o"]);
+    expect(plan.replacedTrades).toBe(0);
+  });
+
+  it("replaces a same-ref conversion whose units changed", () => {
+    const [plan] = planConversionBatches([batch], rows, [existingConv("o", "CONVERSION_OUT", 10), existingConv("i", "CONVERSION_IN", 5)]);
+    expect(plan.createLines).toEqual([1, 2]);
+    expect(plan.deleteIds).toEqual(["i", "o"]);
+  });
+
+  it("findExistingMatches leaves conversion rows to the batch plan", () => {
+    const matches = findExistingMatches(rows, [existingConv("o", "CONVERSION_OUT", 10), existingConv("i", "CONVERSION_IN", 6)]);
+    expect(matches.size).toBe(0);
+  });
+
+  it("flags a fallback BUY/SELL leg that an earlier import already put into a conversion", () => {
+    const sell = imported(5, {
+      activityType: "SELL",
+      symbol: "IE00AAAAAAA1",
+      quantity: "10",
+      unitPrice: "12",
+      amount: undefined,
+      comment: "FUND A - fund switch (traspaso) out [ref:000000000200]",
+    });
+    const matches = findExistingMatches([sell], [existingConv("o", "CONVERSION_OUT", 10), existingConv("i", "CONVERSION_IN", 6)]);
+    expect(matches.get(5)).toEqual({ existingId: "o", differs: false, alreadyConverted: true });
   });
 });

@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.0.0] - 2026-11-03
+
+### Changed
+
+- **Fund switches (traspasos) are imported as fund conversions** (Wealthfolio 3.12 `CONVERSION_OUT`/`CONVERSION_IN` pairs) instead of `SELL` + `BUY`. Units move at cost, with no cash and no realized gain or loss, matching their tax-deferred treatment in Spain. The addon groups MyInvestor's multi-day, many-to-many switch legs into batches by value and splits each batch into one conversion per leaving fund, arriving fund and arrival day.
+- Switches that can't be converted stay `SELL` + `BUY`, as before, and are listed with the reason in a new "Switches as BUY/SELL" tab. These are switches between EUR and USD funds (not supported by Wealthfolio yet), legs with no counterpart, and switches out of a fund the uploaded history doesn't show as held.
+- **Requires Wealthfolio 3.12.0** (SDK 3.12.0). Older versions ignore conversion rows.
+- New `activities.saveMany` permission.
+
+### Migration
+
+- Re-importing replaces the switch `SELL`/`BUY` activities an earlier version created with the new conversions, in one atomic step per switch. The review step shows how many will be replaced and offers to keep the old ones instead. Set the account's cost-basis method to FIFO to match Spanish tax rules.
+
 ## [1.5.2] - 2026-11-02
 
 ### Fixed

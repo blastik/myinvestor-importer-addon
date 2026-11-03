@@ -20,8 +20,8 @@ import {
   TabsTrigger,
 } from "@wealthfolio/ui";
 import { loadSettings, saveSettings } from "./settings";
-import { findExistingMatches } from "./dedup";
-import type { ExistingActivity, ExistingMatch } from "./dedup";
+import { findExistingMatches, isConversionRow, planConversionBatches } from "./dedup";
+import type { ConversionBatchPlan, ExistingActivity, ExistingMatch } from "./dedup";
 import { describeUnknownFormat, mergeMovimientosFiles, parseMyInvestorHtml, readMyInvestorFile } from "./parseFiles";
 import { SecurityMappingStep } from "./SecurityMappingStep";
 import type { SecurityInfo, SecurityMapping } from "./SecurityMappingStep";
@@ -79,13 +79,54 @@ function firstError(a: ActivityImport): string {
   return msgs[0] ?? "";
 }
 
+function displayType(a: ActivityImport): string {
+  if (a.subtype === "CONVERSION_OUT") return "SWITCH OUT";
+  if (a.subtype === "CONVERSION_IN") return "SWITCH IN";
+  return a.activityType;
+}
+
 function displayAmount(a: ActivityImport): string {
   const ccy = a.currency ?? "EUR";
+  // Conversion rows carry units only (no price or amount).
+  if (isConversionRow(a)) return `${Number(a.quantity)} units`;
   if (a.amount != null && a.amount !== "") return `${Number(a.amount).toFixed(2)} ${ccy}`;
   if (a.quantity != null && a.unitPrice != null) {
     return `${(parseFloat(String(a.quantity)) * parseFloat(String(a.unitPrice))).toFixed(2)} ${ccy}`;
   }
   return "—";
+}
+
+function assetInputOf(a: ActivityImport): ActivityCreate["asset"] {
+  return a.symbol || a.assetId
+    ? {
+        id: a.assetId,
+        symbol: a.symbol,
+        name: a.symbolName,
+        exchangeMic: a.exchangeMic,
+        quoteCcy: a.quoteCcy,
+        instrumentType: a.instrumentType,
+        providerId: a.providerId,
+        providerSymbol: a.providerSymbol,
+      }
+    : undefined;
+}
+
+function toActivityCreate(a: ActivityImport): ActivityCreate {
+  return {
+    accountId: a.accountId,
+    activityType: a.activityType,
+    subtype: a.subtype,
+    activityDate: a.date as string,
+    sourceGroupId: a.sourceGroupId,
+    currency: a.currency,
+    quantity: a.quantity,
+    unitPrice: a.unitPrice,
+    amount: a.amount,
+    fee: a.fee,
+    fxRate: a.fxRate,
+    comment: a.comment,
+    asset: assetInputOf(a),
+  };
 }
 
 function applySecurityMappings(
@@ -275,12 +316,16 @@ function ActivityRow({
   accountName,
   included,
   changed,
+  locked,
   onToggleInclude,
 }: {
   activity: ActivityImport;
   accountName: (id: string) => string;
   included: boolean;
   changed: boolean;
+  // A duplicate that can't be included: a fund conversion that already
+  // exists exactly, or a switch leg an earlier import already converted.
+  locked: boolean;
   onToggleInclude: () => void;
 }) {
   const status = activityStatus(activity);
@@ -292,7 +337,7 @@ function ActivityRow({
       <td className="whitespace-nowrap px-2 py-1.5 text-xs">{accountName(activity.accountId)}</td>
       <td className="whitespace-nowrap px-2 py-1.5">
         <span className="bg-muted rounded px-1 py-0.5 font-mono text-[10px]">
-          {activity.activityType}
+          {displayType(activity)}
         </span>
       </td>
       <td className="whitespace-nowrap px-2 py-1.5 font-mono text-xs">{activity.symbol ?? "—"}</td>
@@ -300,7 +345,9 @@ function ActivityRow({
         {displayAmount(activity)}
       </td>
       <td className="px-2 py-1.5 text-xs">
-        {status === "valid" && <span className="text-muted-foreground text-[10px]">Ready</span>}
+        {status === "valid" && (
+          <span className="text-muted-foreground text-[10px]">{included ? "Ready" : "Skipped"}</span>
+        )}
         {status === "duplicate" && (
           <div className="flex items-center gap-1.5">
             <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400">
@@ -314,6 +361,14 @@ function ActivityRow({
                 Changed
               </span>
             )}
+            {locked ? (
+              <span
+                title="Already in Wealthfolio as a fund conversion — it can only be skipped"
+                className="text-muted-foreground text-[10px]"
+              >
+                Converted
+              </span>
+            ) : (
             <button
               onClick={onToggleInclude}
               className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
@@ -324,6 +379,7 @@ function ActivityRow({
             >
               {included ? "Skip" : "Include"}
             </button>
+            )}
           </div>
         )}
         {status === "error" && (
@@ -358,6 +414,11 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
   // (see findExistingMatches), and which of those would change on update.
   const [existingActivities, setExistingActivities] = useState<ExistingActivity[]>([]);
   const [changedLines, setChangedLines] = useState<Set<number>>(new Set());
+  // Fund-switch conversion batches (see planConversionBatches) and the
+  // duplicate rows that may never be included (see ActivityRow's `locked`).
+  const [batchPlans, setBatchPlans] = useState<ConversionBatchPlan[]>([]);
+  const [lockedLines, setLockedLines] = useState<Set<number>>(new Set());
+  const [replacedCount, setReplacedCount] = useState(0);
 
   const [fileError, setFileError] = useState<React.ReactNode>("");
   const [checkError, setCheckError] = useState("");
@@ -403,16 +464,35 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
       }
 
       const matches: Map<number, ExistingMatch> = findExistingMatches(validated, existingActivities);
+      const plans = planConversionBatches(parseResult?.conversionBatches ?? [], validated, existingActivities);
+      const existingConversionLines = new Map(plans.flatMap((p) => [...p.existingLines]));
+      const createLines = new Set(plans.flatMap((p) => p.createLines));
       const changed = new Set<number>();
+      const locked = new Set<number>();
       const withMatches = validated.map((a) => {
-        const m = a.lineNumber != null ? matches.get(a.lineNumber) : undefined;
+        const line = a.lineNumber;
+        if (line == null) return a;
+        // Conversion rows: the batch plan decides, not the per-row checks.
+        const existingConversion = existingConversionLines.get(line);
+        if (existingConversion) {
+          locked.add(line);
+          return { ...a, duplicateOfId: a.duplicateOfId ?? existingConversion };
+        }
+        if (createLines.has(line)) return { ...a, duplicateOfId: undefined };
+        const m = matches.get(line);
+        if (m?.alreadyConverted) {
+          locked.add(line);
+          return { ...a, duplicateOfId: m.existingId };
+        }
         if (!m || a.duplicateOfId) return a;
-        if (m.differs) changed.add(a.lineNumber as number);
+        if (m.differs) changed.add(line);
         return { ...a, duplicateOfId: m.existingId };
       });
 
       setChecked(withMatches);
       setChangedLines(changed);
+      setBatchPlans(plans);
+      setLockedLines(locked);
       setExcludedLines(
         new Set(
           withMatches
@@ -422,7 +502,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
       );
       setStep("confirm");
     },
-    [ctx, existingActivities],
+    [ctx, existingActivities, parseResult],
   );
 
   const runTransform = useCallback(
@@ -460,6 +540,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
           existing.map((a) => ({
             id: a.id,
             activityType: a.activityType,
+            subtype: a.subtype ?? null,
             date: new Date(a.date).toISOString().slice(0, 10),
             quantity: toNum(a.quantity),
             unitPrice: toNum(a.unitPrice),
@@ -680,18 +761,39 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
   const toggleAllDuplicates = useCallback(
     (duplicates: ActivityImport[]) => {
       const lines = duplicates
-        .filter((a) => a.lineNumber != null)
+        .filter((a) => a.lineNumber != null && !lockedLines.has(a.lineNumber))
         .map((a) => a.lineNumber as number);
       const allExcluded = lines.every((ln) => excludedLines.has(ln));
-      setExcludedLines(() => {
-        if (allExcluded) return new Set<number>();
-        return new Set(lines);
+      setExcludedLines((prev) => {
+        const next = new Set(prev);
+        for (const ln of lines) {
+          if (allExcluded) next.delete(ln);
+          else next.add(ln);
+        }
+        return next;
       });
     },
-    [excludedLines],
+    [excludedLines, lockedLines],
   );
 
   // ── Import ────────────────────────────────────────────────────────────────
+
+  // Every conversion batch whose rows are written (included, no row
+  // refused by checkImport) or that only has old activities to remove.
+  const batchesToWrite = useCallback(
+    (rows: ActivityImport[]) => {
+      const byLine = new Map(rows.map((a) => [a.lineNumber as number, a]));
+      return batchPlans.filter((p) => {
+        if (p.createLines.length === 0) return p.deleteIds.length > 0;
+        if (p.createLines.some((ln) => excludedLines.has(ln))) return false;
+        return p.createLines.every((ln) => {
+          const a = byLine.get(ln);
+          return a != null && activityStatus(a) !== "error";
+        });
+      });
+    },
+    [batchPlans, excludedLines],
+  );
 
   const handleImport = useCallback(async () => {
     if (!checked) return;
@@ -701,85 +803,84 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
       (a) => a.lineNumber != null && excludedLines.has(a.lineNumber),
     ).length;
 
+    // Conversion rows are written per batch below, never one by one: a
+    // conversion row on its own is refused by Wealthfolio.
+    const conversionLines = new Set(batchPlans.flatMap((p) => p.createLines));
     const candidates = checked.filter((a) => {
       if (activityStatus(a) === "error") return false;
       if (a.lineNumber != null && excludedLines.has(a.lineNumber)) return false;
+      if (a.lineNumber != null && (lockedLines.has(a.lineNumber) || conversionLines.has(a.lineNumber))) return false;
       return true;
     });
+    const batches = batchesToWrite(checked);
+    const byLine = new Map(checked.map((a) => [a.lineNumber as number, a]));
+    const steps = candidates.length + batches.length;
 
     setImportProgress(0);
     setStep("importing");
 
     let importedCount = 0;
     let skippedCount = 0;
+    let replaced = 0;
+    let done = 0;
     const failed: { activity: ActivityImport; error: string }[] = [];
+    const advance = () => {
+      done += 1;
+      setImportProgress(Math.round((done / Math.max(steps, 1)) * 95) + 2);
+    };
     try {
-      for (let i = 0; i < candidates.length; i++) {
-        const a = candidates[i];
-        const assetInput =
-          a.symbol || a.assetId
-            ? {
-                id: a.assetId,
-                symbol: a.symbol,
-                name: a.symbolName,
-                exchangeMic: a.exchangeMic,
-                quoteCcy: a.quoteCcy,
-                instrumentType: a.instrumentType,
-                providerId: a.providerId,
-                providerSymbol: a.providerSymbol,
-              }
-            : undefined;
-
+      for (const a of candidates) {
         try {
           if (activityStatus(a) === "duplicate" && a.duplicateOfId) {
-            const upd: ActivityUpdate = {
-              id: a.duplicateOfId,
-              accountId: a.accountId,
-              activityType: a.activityType,
-              subtype: a.subtype,
-              activityDate: a.date as string,
-              currency: a.currency,
-              quantity: a.quantity,
-              unitPrice: a.unitPrice,
-              amount: a.amount,
-              fee: a.fee,
-              fxRate: a.fxRate,
-              comment: a.comment,
-              asset: assetInput,
-            };
+            const upd: ActivityUpdate = { ...toActivityCreate(a), id: a.duplicateOfId };
             await ctx.api.activities.update(upd);
           } else {
-            const cre: ActivityCreate = {
-              accountId: a.accountId,
-              activityType: a.activityType,
-              subtype: a.subtype,
-              activityDate: a.date as string,
-              currency: a.currency,
-              quantity: a.quantity,
-              unitPrice: a.unitPrice,
-              amount: a.amount,
-              fee: a.fee,
-              fxRate: a.fxRate,
-              comment: a.comment,
-              asset: assetInput,
-            };
-            await ctx.api.activities.create(cre);
+            await ctx.api.activities.create(toActivityCreate(a));
           }
           importedCount++;
         } catch (e) {
           skippedCount++;
           failed.push({ activity: a, error: String(e) });
         }
-        setImportProgress(Math.round(((i + 1) / candidates.length) * 95) + 2);
+        advance();
       }
+
+      // One saveMany per switch batch: it creates the batch's conversions
+      // and deletes the activities they replace (old BUY/SELL legs, or an
+      // older allocation's conversions) atomically — Wealthfolio persists
+      // nothing from the call if any part of it is refused.
+      for (const plan of batches) {
+        const rows = plan.createLines.map((ln) => byLine.get(ln)).filter((a): a is ActivityImport => a != null);
+        let error: string | undefined;
+        try {
+          const result = await ctx.api.activities.saveMany({
+            creates: rows.map(toActivityCreate),
+            deleteIds: plan.deleteIds,
+          });
+          if (result.errors.length > 0) error = result.errors.map((e) => e.message).join("; ");
+        } catch (e) {
+          error = String(e);
+        }
+        if (error) {
+          skippedCount += rows.length;
+          for (const a of rows) failed.push({ activity: a, error });
+        } else {
+          importedCount += rows.length;
+          replaced += plan.deleteIds.length;
+        }
+        advance();
+      }
+
       setImportProgress(100);
       setFailedActivities(failed);
+      setReplacedCount(replaced);
 
+      const writtenConversionRows = batches.reduce((n, p) => n + p.createLines.length, 0);
       const syntheticResult: ImportActivitiesResult = {
         activities: candidates,
         importRunId: "",
         summary: {
-          total: candidates.length + userSkippedCount,
+          total: candidates.length + writtenConversionRows + userSkippedCount,
           imported: importedCount,
           skipped: skippedCount,
           duplicates: userSkippedCount,
@@ -800,7 +901,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
       setCheckError(String(e));
       setStep("confirm");
     }
-  }, [checked, excludedLines, ctx]);
+  }, [checked, excludedLines, lockedLines, batchPlans, batchesToWrite, ctx]);
 
   // ── Reset ─────────────────────────────────────────────────────────────────
 
@@ -814,6 +915,9 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
     setChecked(null);
     setExcludedLines(new Set());
     setChangedLines(new Set());
+    setBatchPlans([]);
+    setLockedLines(new Set());
+    setReplacedCount(0);
     setShowDuplicatesOnly(false);
     setFileError("");
     setCheckError("");
@@ -874,6 +978,8 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
                 ` · ${parseResult.duplicates.length} cross-addon duplicates`}
               {parseResult.fxRateWarnings.length > 0 &&
                 ` · ${parseResult.fxRateWarnings.length} fx rate warnings`}
+              {parseResult.conversionBatches.length > 0 &&
+                ` · ${parseResult.conversionBatches.reduce((n, b) => n + b.refs.length, 0)} fund conversions`}
             </p>
             <div className="flex gap-2">
               <Button className="flex-1" onClick={proceedFromUpload} disabled={!parseResult}>
@@ -925,13 +1031,37 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
     const valid = checked.filter((a) => activityStatus(a) === "valid");
     const duplicates = checked.filter((a) => activityStatus(a) === "duplicate");
     const errors = checked.filter((a) => activityStatus(a) === "error");
-    const userExcludedCount = duplicates.filter(
-      (a) => a.lineNumber != null && excludedLines.has(a.lineNumber),
+    const toImportCount = checked.filter(
+      (a) =>
+        activityStatus(a) !== "error" &&
+        (a.lineNumber == null || (!excludedLines.has(a.lineNumber) && !lockedLines.has(a.lineNumber))),
     ).length;
-    const toImportCount = valid.length + duplicates.length - userExcludedCount;
     const unsupported = parseResult?.skipped ?? [];
     const crossAddonDuplicates = parseResult?.duplicates ?? [];
     const fxRateWarnings = parseResult?.fxRateWarnings ?? [];
+    const conversionWarnings = parseResult?.conversionWarnings ?? [];
+
+    // Batches that replace activities an earlier import made for the same
+    // switch legs. Included by default (that replacement is the point of
+    // importing switches as conversions); the user can keep the old ones.
+    const replacingPlans = batchPlans.filter((p) => p.createLines.length > 0 && p.deleteIds.length > 0);
+    const replacingLines = replacingPlans.flatMap((p) => p.createLines);
+    const keepingOld = replacingLines.length > 0 && replacingLines.every((ln) => excludedLines.has(ln));
+    const replacedTrades = replacingPlans.reduce((n, p) => n + p.replacedTrades, 0);
+    const replacedIds = replacingPlans.reduce((n, p) => n + p.deleteIds.length, 0);
+    const toggleKeepOld = () =>
+      setExcludedLines((prev) => {
+        const next = new Set(prev);
+        for (const ln of replacingLines) {
+          if (keepingOld) next.delete(ln);
+          else next.add(ln);
+        }
+        return next;
+      });
+    // Stale activities to delete where every conversion already exists.
+    const cleanupIds = batchPlans
+      .filter((p) => p.createLines.length === 0)
+      .reduce((n, p) => n + p.deleteIds.length, 0);
 
     const visibleActivities = showDuplicatesOnly
       ? checked.filter((a) => activityStatus(a) === "duplicate")
@@ -948,6 +1078,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
               {crossAddonDuplicates.length > 0 &&
                 ` · ${crossAddonDuplicates.length} cross-addon duplicates`}
               {fxRateWarnings.length > 0 && ` · ${fxRateWarnings.length} fx rate warnings`}
+              {conversionWarnings.length > 0 && ` · ${conversionWarnings.length} switch legs as BUY/SELL`}
             </p>
             {checkError && (
               <p className="text-destructive mt-1 text-xs">
@@ -962,11 +1093,44 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
             >
               Back
             </Button>
-            <Button onClick={handleImport} disabled={toImportCount === 0}>
+            <Button onClick={handleImport} disabled={toImportCount === 0 && cleanupIds === 0}>
               Import {toImportCount} activities
             </Button>
           </div>
         </div>
+
+        {replacingPlans.length > 0 && (
+          <div className="bg-muted flex items-center justify-between rounded-lg px-4 py-3 text-sm">
+            <span>
+              {keepingOld ? (
+                <>
+                  Keeping the earlier fund-switch activities: <strong>{replacingLines.length / 2}</strong> new fund
+                  conversions are skipped so the switches aren't counted twice.
+                </>
+              ) : (
+                <>
+                  <strong>{replacingLines.length / 2}</strong> fund conversions replace{" "}
+                  <strong>{replacedIds}</strong> activities from an earlier import
+                  {replacedTrades > 0 && ` (${replacedTrades} switch BUY/SELL)`}. The old ones are deleted in the
+                  same step, so switches no longer book a realized gain or loss.
+                </>
+              )}
+            </span>
+            <button
+              onClick={toggleKeepOld}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 ml-4 shrink-0 rounded px-2 py-1 text-xs font-medium transition-colors"
+            >
+              {keepingOld ? "Replace them" : "Keep old activities"}
+            </button>
+          </div>
+        )}
+
+        {cleanupIds > 0 && (
+          <div className="bg-muted rounded-lg px-4 py-3 text-sm">
+            {cleanupIds} activities left over from an earlier switch import are already covered by existing fund
+            conversions and will be deleted.
+          </div>
+        )}
 
         {duplicates.length > 0 && (
           <div className="bg-muted flex items-center justify-between rounded-lg px-4 py-3 text-sm">
@@ -1003,6 +1167,11 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
                   {fxRateWarnings.length > 0 && (
                     <TabsTrigger value="fx-rate-warnings">
                       FX rate warnings ({fxRateWarnings.length})
+                    </TabsTrigger>
+                  )}
+                  {conversionWarnings.length > 0 && (
+                    <TabsTrigger value="conversion-warnings">
+                      Switches as BUY/SELL ({conversionWarnings.length})
                     </TabsTrigger>
                   )}
                 </TabsList>
@@ -1045,6 +1214,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
                           accountName={accountName}
                           included={a.lineNumber == null || !excludedLines.has(a.lineNumber)}
                           changed={a.lineNumber != null && changedLines.has(a.lineNumber)}
+                          locked={a.lineNumber != null && lockedLines.has(a.lineNumber)}
                           onToggleInclude={() =>
                             a.lineNumber != null && toggleExclude(a.lineNumber)
                           }
@@ -1068,6 +1238,12 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
               {fxRateWarnings.length > 0 && (
                 <TabsContent value="fx-rate-warnings" className="mt-0">
                   <SkippedTable rows={fxRateWarnings} />
+                </TabsContent>
+              )}
+
+              {conversionWarnings.length > 0 && (
+                <TabsContent value="conversion-warnings" className="mt-0">
+                  <SkippedTable rows={conversionWarnings} />
                 </TabsContent>
               )}
             </Tabs>
@@ -1109,6 +1285,7 @@ export function ImportPage({ ctx }: { ctx: AddonContext }) {
             </h1>
             <p className="text-muted-foreground text-sm">
               {summary.imported} activities imported successfully.
+              {replacedCount > 0 && ` ${replacedCount} earlier fund-switch activities replaced.`}
             </p>
           </div>
         </div>
