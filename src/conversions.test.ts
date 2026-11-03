@@ -68,6 +68,21 @@ describe("batchLegs", () => {
     expect(released).toHaveLength(0);
   });
 
+  it("never closes partway through a day, so small same-day tail fragments stay in the batch", () => {
+    // Out 1000; ins reach 995 (within the 0.5% = €5 tolerance) one fragment
+    // before the day's last 5.00 fragment.
+    const legs = [
+      leg("out", "A", "100", 1000, "2026-03-02"),
+      leg("in", "B", "90", 900, "2026-03-04"),
+      leg("in", "B", "9.5", 95, "2026-03-04"),
+      leg("in", "B", "0.5", 5, "2026-03-04"),
+    ];
+    const { batches, released } = batchLegs(legs);
+    expect(released).toHaveLength(0);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toHaveLength(4);
+  });
+
   it("tolerates cent-level rounding but not a real mismatch", () => {
     expect(batchLegs([leg("out", "A", "1", 100), leg("in", "B", "1", 100.04)]).batches).toHaveLength(1);
     expect(batchLegs([leg("out", "A", "1", 100), leg("in", "B", "1", 103)]).batches).toHaveLength(0);

@@ -104,7 +104,13 @@ export function batchLegs(legs: TraspasoLeg[]): { batches: TraspasoLeg[][]; rele
         hasIn = true;
         balance -= v;
       }
-      if (hasOut && hasIn && Math.abs(balance) <= balanceTolerance(outSum, hasForeign)) {
+      // Only close at the end of a day. A batch that is within tolerance
+      // partway through a day would otherwise strand that day's remaining
+      // small fragments as unpaired legs (seen on a real 80-leg switch: a
+      // €6.31 fragment left out of a €3,388.89 batch whose 0.5% tolerance
+      // was reached one fragment early).
+      const endOfDay = j + 1 === sorted.length || sorted[j + 1].row.fechaOperacion !== leg.row.fechaOperacion;
+      if (endOfDay && hasOut && hasIn && Math.abs(balance) <= balanceTolerance(outSum, hasForeign)) {
         end = j;
         break;
       }
